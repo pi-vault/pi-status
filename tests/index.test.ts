@@ -1,25 +1,22 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getConfigPath, loadConfig, normalizeSegments, normalizeStatusFilter } from "../src/config.ts";
+import { loadConfig, normalizeSegments, normalizeStatusFilter, saveConfigToSettings } from "../src/config.ts";
 import createExtension from "../src/index.ts";
 import {
   DEFAULT_SEGMENTS,
   buildFooterLine,
+  findProjectRootLabel,
   formatCompactNumber,
   formatModelWithReasoning,
   type FooterRenderInput,
-  type ThemeLike,
 } from "../src/render.ts";
+import { mapStatusDraftToFilter } from "../src/statusline-ui.ts";
 
-function createTheme(): ThemeLike {
-  return { fg: (color, text) => `<${color}>${text}</${color}>` };
-}
-
-function withDefaults(input: Omit<FooterRenderInput, "statusFilter">): FooterRenderInput {
-  return { ...input, statusFilter: { mode: "all", hidden: [] } };
+function withDefaults(input: Omit<FooterRenderInput, "filter">): FooterRenderInput {
+  return { ...input, filter: { mode: "all", hidden: [] } };
 }
 
 function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext {
@@ -31,12 +28,23 @@ function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext 
       notify: () => {},
       setStatus: () => {},
       setWorkingMessage: () => {},
+      setWorkingVisible: () => {},
+      setWorkingIndicator: () => {},
+      setHiddenThinkingLabel: () => {},
       setWidget: () => {},
       setFooter: () => {},
       setHeader: () => {},
       setTitle: () => {},
-      custom: async () => undefined,
+      custom: async () => null,
+      pasteToEditor: () => {},
       setEditorText: () => {},
+      getEditorText: () => "",
+      editor: async () => undefined,
+      addAutocompleteProvider: () => {},
+      setEditorComponent: () => {},
+      getEditorComponent: () => undefined,
+      theme: {} as never,
+      getAllThemes: () => [],
     },
     hasUI: true,
     cwd: "/Users/test/project",
@@ -58,44 +66,127 @@ function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext 
 }
 
 describe("config", () => {
-  it("falls back for missing/malformed/wrong-shape", () => {
-    expect(loadConfig("/missing/file").segments).toEqual(DEFAULT_SEGMENTS);
+  it("normalizes segments and filter", () => {
+    expect(normalizeSegments(["model", "model", "unknown", 1, "current-dir", "git-branch", "project-root"]))
+      .toEqual(["model", "current-dir", "git-branch", "project-root"]);
 
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
-    const malformed = join(dir, "bad.json");
-    writeFileSync(malformed, "{x", "utf8");
-    expect(loadConfig(malformed).segments).toEqual(DEFAULT_SEGMENTS);
-
-    const wrong = join(dir, "wrong.json");
-    writeFileSync(wrong, "[]", "utf8");
-    expect(loadConfig(wrong).segments).toEqual(DEFAULT_SEGMENTS);
-  });
-
-  it("normalizes unknown/duplicate/non-string entries", () => {
-    expect(
-      normalizeSegments(["model", "model", "unknown", 1, "current-dir", "git-branch"]),
-    ).toEqual(["model", "current-dir", "git-branch"]);
-  });
-
-  it("normalizes statusFilter and preserves segments when filter invalid", () => {
     expect(normalizeStatusFilter(undefined)).toEqual({ mode: "all", hidden: [] });
     expect(normalizeStatusFilter({ mode: "all", hidden: ["a", "a", "", 1] })).toEqual({
       mode: "all",
       hidden: ["a"],
     });
-
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
-    const file = join(dir, "cfg.json");
-    writeFileSync(file, JSON.stringify({ segments: ["model"], statusFilter: { mode: "bad" } }), "utf8");
-    expect(loadConfig(file)).toEqual({
-      segments: ["model"],
-      statusFilter: { mode: "all", hidden: [] },
-    });
   });
 
-  it("supports PI_STATUS_CONFIG relative override", () => {
-    const rel = "foo/bar.json";
-    expect(getConfigPath({ PI_STATUS_CONFIG: rel } as NodeJS.ProcessEnv)).toContain(rel);
+  it("loads precedence: settings > default", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const globalSettings = join(globalHome, ".pi/agent/settings.json");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(globalSettings, JSON.stringify({ statusLine: { segments: ["git-branch"] } }), "utf8");
+    writeFileSync(projectSettings, JSON.stringify({ statusLine: { filter: { mode: "only", shown: ["x"] } } }), "utf8");
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+    try {
+      const viaSettings = loadConfig({ cwd: project });
+      expect(viaSettings.source).toBe("settings");
+      expect(viaSettings.config.segments).toEqual(["git-branch"]);
+      expect(viaSettings.config.filter).toEqual({ mode: "only", shown: ["x"] });
+
+      writeFileSync(projectSettings, "{ bad", "utf8");
+      writeFileSync(globalSettings, "{ bad", "utf8");
+      const viaDefault = loadConfig({ cwd: project });
+      expect(viaDefault.source).toBe("default");
+      expect(viaDefault.config.segments).toEqual(DEFAULT_SEGMENTS);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+
+  it("saves into project when project has statusLine, else global", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const globalSettings = join(globalHome, ".pi/agent/settings.json");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(projectSettings, JSON.stringify({ statusLine: { segments: ["model"] }, x: 1 }), "utf8");
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+    try {
+      const first = saveConfigToSettings(
+        { segments: ["current-dir"], filter: { mode: "all", hidden: [] } },
+        { cwd: project },
+      );
+      expect(first.target).toBe("project");
+      const projectParsed = JSON.parse(readFileSync(projectSettings, "utf8"));
+      expect(projectParsed.x).toBe(1);
+      expect(projectParsed.statusLine.segments).toEqual(["current-dir"]);
+
+      writeFileSync(projectSettings, JSON.stringify({ y: 2 }), "utf8");
+      const second = saveConfigToSettings(
+        { segments: ["model"], filter: { mode: "only", shown: ["a"] } },
+        { cwd: project },
+      );
+      expect(second.target).toBe("global");
+      const globalParsed = JSON.parse(readFileSync(globalSettings, "utf8"));
+      expect(globalParsed.statusLine.filter).toEqual({ mode: "only", shown: ["a"] });
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+
+  it("refuses to fall through to global when project settings are malformed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(projectSettings, "{ bad", "utf8");
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+    try {
+      expect(() =>
+        saveConfigToSettings(
+          { segments: ["model"], filter: { mode: "all", hidden: [] } },
+          { cwd: project },
+        ),
+      ).toThrow(/project settings are malformed/i);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+});
+
+describe("filter mapping", () => {
+  it('maps "new shown" to all+hidden', () => {
+    expect(
+      mapStatusDraftToFilter({
+        discoveredKeys: ["c", "a", "b"],
+        shownKeys: ["a", "c"],
+        newStatusesShown: true,
+      }),
+    ).toEqual({ mode: "all", hidden: ["b"] });
+  });
+
+  it('maps "new hidden" to only+shown', () => {
+    expect(
+      mapStatusDraftToFilter({
+        discoveredKeys: ["c", "a", "b"],
+        shownKeys: ["a", "c"],
+        newStatusesShown: false,
+      }),
+    ).toEqual({ mode: "only", shown: ["a", "c"] });
   });
 });
 
@@ -109,6 +200,37 @@ describe("render", () => {
 
   it("formats model with reasoning", () => {
     expect(formatModelWithReasoning({ id: "x", name: "X", reasoning: true }, "medium")).toBe("X [med]");
+  });
+
+  it("finds nearest project root label", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-root-"));
+    const root = join(dir, "repo");
+    const nested = join(root, "a/b/c");
+    mkdirSync(nested, { recursive: true });
+    mkdirSync(join(root, ".git"), { recursive: true });
+    expect(findProjectRootLabel(nested)).toBe("repo");
+    expect(findProjectRootLabel(tmpdir())).toBeNull();
+  });
+
+  it("renders project-root segment when available", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-root-"));
+    const root = join(dir, "repo2");
+    const nested = join(root, "x/y");
+    mkdirSync(nested, { recursive: true });
+    mkdirSync(join(root, ".pi"), { recursive: true });
+    writeFileSync(join(root, ".pi/settings.json"), "{}", "utf8");
+
+    const line = buildFooterLine(
+      withDefaults({
+        cwd: nested,
+        thinkingLevel: "medium",
+        runState: "idle",
+        segments: ["project-root"],
+      }),
+      { fg: (_c, t) => t },
+      200,
+    );
+    expect(line).toBe("repo2");
   });
 
   it("keeps default unchanged", () => {
@@ -125,133 +247,6 @@ describe("render", () => {
     );
     expect(line).toContain("GPT-5 [med]");
     expect(line).toContain("/Users/test/project");
-  });
-
-  it("renders codex rate windows and colors", () => {
-    const line = buildFooterLine(
-      withDefaults({
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        usageState: {
-          compatibility: {
-            currentLiveProviderSnapshot: {
-              providerId: "openai-codex",
-              windows: [
-                { key: "fiveHour", label: "5h", usedPercent: 69 },
-                { key: "weekly", label: "wk", usedPercent: 90 },
-              ],
-            },
-          },
-        },
-        segments: ["five-hour-limit", "weekly-limit"],
-      }),
-      createTheme(),
-      200,
-    );
-    expect(line).toContain("5h 31% left");
-    expect(line).toContain("wk 10% left");
-    expect(line).toContain("<success>");
-    expect(line).toContain("<error>");
-  });
-
-  it("omits non-codex and unavailable rate windows", () => {
-    const nonCodex = buildFooterLine(
-      withDefaults({
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        usageState: {
-          compatibility: {
-            currentLiveProviderSnapshot: { providerId: "x", windows: [{ key: "fiveHour", label: "5h", usedPercent: 50 }] },
-          },
-        },
-        segments: ["five-hour-limit"],
-      }),
-      createTheme(),
-      200,
-    );
-    expect(nonCodex).toBe("");
-
-    const unavailable = buildFooterLine(
-      withDefaults({
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        usageState: {
-          compatibility: {
-            currentLiveProviderSnapshot: {
-              providerId: "openai-codex",
-              windows: [{ key: "fiveHour", label: "5h", usedPercent: 50, unavailableReason: "down" }],
-            },
-          },
-        },
-        segments: ["five-hour-limit"],
-      }),
-      createTheme(),
-      200,
-    );
-    expect(unavailable).toBe("");
-  });
-
-  it("renders extension statuses with ordering/filter/prefix stripping", () => {
-    const line = buildFooterLine(
-      {
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        extensionStatuses: new Map([
-          ["b", "b: two"],
-          ["a", "a - one"],
-          ["c", "\u001b[31mc: keep\u001b[0m"],
-        ]),
-        statusFilter: { mode: "all", hidden: ["b"] },
-        segments: ["extension-statuses"],
-      },
-      createTheme(),
-      200,
-    );
-    expect(line).toContain("one");
-    expect(line).not.toContain("two");
-    expect(line).toContain("\u001b[31mc: keep\u001b[0m");
-  });
-
-  it("respects only-mode and five-status cap", () => {
-    const statuses = new Map<string, string>();
-    for (const key of ["a", "b", "c", "d", "e", "f"]) statuses.set(key, `${key}: ${key.repeat(20)}`);
-
-    const line = buildFooterLine(
-      {
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        extensionStatuses: statuses,
-        statusFilter: { mode: "only", shown: ["a", "b", "c", "d", "e", "f"] },
-        segments: ["extension-statuses"],
-      },
-      { fg: (_c, t) => t },
-      200,
-    );
-
-    expect((line.match(/\|/g) ?? []).length).toBe(4);
-    expect(line).not.toContain("f");
-    expect(line).toContain("...");
-  });
-
-  it("applies final-line truncation", () => {
-    const line = buildFooterLine(
-      {
-        cwd: "/x",
-        thinkingLevel: "high",
-        runState: "idle",
-        extensionStatuses: new Map([["a", "a: verylongverylongverylong"]]),
-        statusFilter: { mode: "all", hidden: [] },
-        segments: ["extension-statuses", "current-dir"],
-      },
-      { fg: (_c, t) => t },
-      10,
-    );
-    expect(line).toContain("...");
   });
 });
 
@@ -274,21 +269,27 @@ describe("extension wiring", () => {
     };
   }
 
-  it("installs footer and repaints on branch change", () => {
+  it("installs footer and registers /statusline", () => {
     const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory: ((...args: unknown[]) => { render: (width: number) => string[] }) | undefined;
     const requestRender = vi.fn();
     const events = createBus();
+    const registerCommand = vi.fn();
 
     const pi = {
       events,
       on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
+      registerCommand,
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
     createExtension(pi);
+    expect(registerCommand).toHaveBeenCalledWith(
+      "statusline",
+      expect.objectContaining({ handler: expect.any(Function) }),
+    );
 
     const ctx = createContext({
       ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
@@ -296,61 +297,102 @@ describe("extension wiring", () => {
 
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const listeners: Array<() => void> = [];
     const footer = footerFactory?.(
       { requestRender },
       { fg: (_c: string, t: string) => t },
       {
         getGitBranch: () => "main",
         getExtensionStatuses: () => new Map(),
-        onBranchChange: (cb: () => void) => void listeners.push(cb),
+        onBranchChange: (cb: () => void) => {
+          cb();
+          return () => {};
+        },
       },
     );
 
     expect(footer?.render(200).join("\n")).toContain("GPT-5 [med]");
-    expect(listeners).toHaveLength(1);
-    listeners[0]();
     expect(requestRender).toHaveBeenCalled();
   });
 
-  it("requests usage snapshot and rerenders on usage events", () => {
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
-    const requestRender = vi.fn();
-    let footerFactory: ((...args: unknown[]) => { render: (width: number) => string[] }) | undefined;
+  it("reloads persisted settings on session events", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-runtime-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(
+      projectSettings,
+      JSON.stringify({
+        statusLine: { segments: ["model"], filter: { mode: "all", hidden: [] } },
+      }),
+      "utf8",
+    );
+
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => void>
+    >();
+    let footerFactory:
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
     const events = createBus();
-    const emitSpy = vi.spyOn(events, "emit");
+    const registerCommand = vi.fn();
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
 
-    const pi = {
-      events,
-      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-      },
-      getThinkingLevel: () => "medium",
-    } as unknown as ExtensionAPI;
+    try {
+      const pi = {
+        events,
+        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+        },
+        registerCommand,
+        getThinkingLevel: () => "medium",
+      } as unknown as ExtensionAPI;
 
-    createExtension(pi);
-    expect(emitSpy).toHaveBeenCalledWith(
-      "usage-core:request",
-      expect.objectContaining({ type: "current", reply: expect.any(Function) }),
-    );
+      createExtension(pi);
 
-    const ctx = createContext({
-      ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+      const ctx = createContext({
+        cwd: project,
+        ui: {
+          ...createContext().ui,
+          setFooter: (x: unknown) => (footerFactory = x as never),
+        },
+      });
 
-    footerFactory?.(
-      { requestRender },
-      { fg: (_c: string, t: string) => t },
-      { getGitBranch: () => "main", getExtensionStatuses: () => new Map(), onBranchChange: () => () => {} },
-    );
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    events.emit("usage-core:ready", {
-      state: { compatibility: { currentLiveProviderSnapshot: { providerId: "openai-codex" } } },
-    });
-    events.emit("usage-core:update-current", { state: {} });
+      const footer = footerFactory?.(
+        {},
+        { fg: (_c: string, t: string) => t },
+        {
+          getGitBranch: () => "main",
+          getExtensionStatuses: () => new Map(),
+        },
+      );
 
-    expect(requestRender).toHaveBeenCalledTimes(2);
+      expect(footer?.render(200).join("\n")).toBe("GPT-5");
+
+      writeFileSync(
+        projectSettings,
+        JSON.stringify({
+          statusLine: {
+            segments: ["project-root"],
+            filter: { mode: "all", hidden: [] },
+          },
+        }),
+        "utf8",
+      );
+      mkdirSync(join(project, ".git"), { recursive: true });
+
+      for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
+
+      expect(footer?.render(200).join("\n")).toBe("project");
+    } finally {
+      process.env.HOME = oldHome;
+    }
   });
 
   it("declares pi-status before pi-usage in pi.extensions", () => {

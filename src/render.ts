@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
@@ -14,6 +16,7 @@ export type ModelLike = {
 export type StatusLineSegmentId =
   | "model"
   | "model-with-reasoning"
+  | "project-root"
   | "current-dir"
   | "git-branch"
   | "run-state"
@@ -40,23 +43,35 @@ export type FooterRenderInput = {
   thinkingLevel: string;
   gitBranch?: string | null;
   runState: RunState;
-  contextUsage?: { tokens?: number | null; contextWindow?: number; percent?: number | null };
+  contextUsage?: {
+    tokens?: number | null;
+    contextWindow?: number;
+    percent?: number | null;
+  };
   branchTotals?: { input: number; output: number; totalTokens: number };
   sessionId?: string;
   usageState?: {
     compatibility?: {
       currentLiveProviderSnapshot?: {
         providerId?: string;
-        windows: Array<{ key?: string; label?: string; usedPercent?: number; unavailableReason?: string | null }>;
+        windows: Array<{
+          key?: string;
+          label?: string;
+          usedPercent?: number;
+          unavailableReason?: string | null;
+        }>;
       } | null;
     };
   };
   extensionStatuses?: ReadonlyMap<string, string>;
-  statusFilter: StatusFilter;
+  filter: StatusFilter;
   segments: StatusLineSegmentId[];
 };
 
-export const DEFAULT_SEGMENTS: StatusLineSegmentId[] = ["model-with-reasoning", "current-dir"];
+export const DEFAULT_SEGMENTS: StatusLineSegmentId[] = [
+  "model-with-reasoning",
+  "current-dir",
+];
 
 export function normalizeThinkingLevel(level: string): string {
   switch (level) {
@@ -94,7 +109,25 @@ export function abbreviateHomeDir(cwd: string, home = homedir()): string {
   return cwd;
 }
 
-function contextColor(percent: number | null | undefined): "success" | "warning" | "error" | "dim" {
+export function findProjectRootLabel(cwd: string): string | null {
+  let current = cwd;
+  while (true) {
+    if (
+      existsSync(join(current, ".git")) ||
+      existsSync(join(current, ".pi/settings.json"))
+    ) {
+      const base = basename(current);
+      return base || current;
+    }
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function contextColor(
+  percent: number | null | undefined,
+): "success" | "warning" | "error" | "dim" {
   if (percent === undefined || percent === null) return "dim";
   if (percent < 70) return "success";
   if (percent < 90) return "warning";
@@ -108,7 +141,12 @@ function getRateWindow(
   const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
   if (snapshot?.providerId !== "openai-codex") return null;
   const window = snapshot.windows.find((item) => item.key === key);
-  if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) return null;
+  if (
+    !window ||
+    typeof window.usedPercent !== "number" ||
+    window.unavailableReason
+  )
+    return null;
   return { usedPercent: window.usedPercent };
 }
 
@@ -135,13 +173,24 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
-function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): string | null {
-  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) => a.localeCompare(b));
+function formatExtensionStatuses(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): string | null {
+  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(
+    ([a], [b]) => a.localeCompare(b),
+  );
   if (entries.length === 0) return null;
 
-  const filter = input.statusFilter;
-  const blocked = filter.mode === "all" ? new Set(normalizeFilterList(filter.hidden)) : undefined;
-  const allowed = filter.mode === "only" ? new Set(normalizeFilterList(filter.shown)) : undefined;
+  const filter = input.filter;
+  const blocked =
+    filter.mode === "all"
+      ? new Set(normalizeFilterList(filter.hidden))
+      : undefined;
+  const allowed =
+    filter.mode === "only"
+      ? new Set(normalizeFilterList(filter.shown))
+      : undefined;
   const visible =
     filter.mode === "all"
       ? entries.filter(([key]) => !blocked?.has(key))
@@ -150,7 +199,13 @@ function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): st
   const parts = visible.slice(0, 5).map(([key, value]) => {
     const trimmed = hasAnsi(value)
       ? value
-      : value.replace(new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"), "");
+      : value.replace(
+          new RegExp(
+            `^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`,
+            "i",
+          ),
+          "",
+        );
     return truncateToWidth(trimmed, 18, "...");
   });
 
@@ -176,6 +231,10 @@ function formatSegment(
       const value = abbreviateHomeDir(input.cwd);
       return value ? [value, "success"] : null;
     }
+    case "project-root": {
+      const value = findProjectRootLabel(input.cwd);
+      return value ? [value, "success"] : null;
+    }
     case "git-branch":
       return input.gitBranch ? [input.gitBranch, "warning"] : null;
     case "run-state":
@@ -190,7 +249,13 @@ function formatSegment(
       const total = input.contextUsage?.tokens;
       const window = input.contextUsage?.contextWindow;
       const percent = input.contextUsage?.percent;
-      if (total === undefined || total === null || window === undefined || percent === undefined || percent === null) {
+      if (
+        total === undefined ||
+        total === null ||
+        window === undefined ||
+        percent === undefined ||
+        percent === null
+      ) {
         return null;
       }
       const remaining = Math.max(0, window - total);
@@ -198,32 +263,48 @@ function formatSegment(
     }
     case "context-window-size": {
       const value = input.contextUsage?.contextWindow;
-      return value === undefined ? null : [`${formatCompactNumber(value)} ctx`, "dim"];
+      return value === undefined
+        ? null
+        : [`${formatCompactNumber(value)} ctx`, "dim"];
     }
     case "used-tokens": {
       const value = input.branchTotals?.totalTokens;
-      return value === undefined ? null : [`${formatCompactNumber(value)} tok`, "dim"];
+      return value === undefined
+        ? null
+        : [`${formatCompactNumber(value)} tok`, "dim"];
     }
     case "total-input-tokens": {
       const value = input.branchTotals?.input;
-      return value === undefined ? null : [`↑${formatCompactNumber(value)}`, "dim"];
+      return value === undefined
+        ? null
+        : [`↑${formatCompactNumber(value)}`, "dim"];
     }
     case "total-output-tokens": {
       const value = input.branchTotals?.output;
-      return value === undefined ? null : [`↓${formatCompactNumber(value)}`, "dim"];
+      return value === undefined
+        ? null
+        : [`↓${formatCompactNumber(value)}`, "dim"];
     }
     case "session-id":
-      return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
+      return input.sessionId
+        ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"]
+        : null;
     case "five-hour-limit": {
       const window = getRateWindow(input, "fiveHour");
       if (!window) return null;
-      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
+      const remaining = Math.min(
+        100,
+        Math.max(0, 100 - Math.round(window.usedPercent)),
+      );
       return [`5h ${remaining}% left`, rateColor(window.usedPercent)];
     }
     case "weekly-limit": {
       const window = getRateWindow(input, "weekly");
       if (!window) return null;
-      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
+      const remaining = Math.min(
+        100,
+        Math.max(0, 100 - Math.round(window.usedPercent)),
+      );
       return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
     }
     case "extension-statuses": {
@@ -235,7 +316,11 @@ function formatSegment(
   }
 }
 
-export function buildFooterLine(input: FooterRenderInput, theme: ThemeLike, width: number): string {
+export function buildFooterLine(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+  width: number,
+): string {
   const parts = input.segments
     .map((id) => formatSegment(id, input, theme))
     .filter((x): x is [string, string | null] => x !== null)
@@ -244,4 +329,3 @@ export function buildFooterLine(input: FooterRenderInput, theme: ThemeLike, widt
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);
 }
-
