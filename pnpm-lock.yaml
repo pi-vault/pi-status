@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@pi-vault/pi-usage':
+        specifier: ^0.1.1
+        version: 0.1.1(@earendil-works/pi-coding-agent@0.78.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.78.0)
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.16
@@ -321,6 +325,13 @@ packages:
 
   '@oxc-project/types@0.132.0':
     resolution: {integrity: sha512-FESMOxil5Se014ui/Eq8fT5uHJo6nIRwH0PfJrZJXs6Gek3ZVFOrpUv3YIZT20m+extU98Hg1Ym72U58rlsxUQ==}
+
+  '@pi-vault/pi-usage@0.1.1':
+    resolution: {integrity: sha512-fqvZVzO52MAeOt2TDvZh9EktFwCFHWo0ScfPwGZNsucUPq/bAU00/60j/+gSMqDDDhqtyPzOZWJC7XxfF9U8Dg==}
+    engines: {node: '>=22.12'}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -1521,6 +1532,11 @@ snapshots:
   '@nodable/entities@2.1.1': {}
 
   '@oxc-project/types@0.132.0': {}
+
+  '@pi-vault/pi-usage@0.1.1(@earendil-works/pi-coding-agent@0.78.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.78.0)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 0.78.0(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.78.0
 
   '@protobufjs/aspromise@1.1.2': {}
 

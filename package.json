@@ -29,7 +29,8 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./src/index.ts",
+      "node_modules/@pi-vault/pi-usage/src/index.ts"
     ]
   },
   "engines": {
@@ -39,6 +40,9 @@
     "src",
     "README.md"
   ],
+  "dependencies": {
+    "@pi-vault/pi-usage": "^0.1.1"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
