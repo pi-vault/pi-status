@@ -1,0 +1,54 @@
+{
+  "name": "@pi-vault/pi-status",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi extension that replaces the default status with a Codex-like status",
+  "author": "Lanh Hoang <lanhhoang@users.noreply.github.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/pi-vault/pi-status#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pi-vault/pi-status.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pi-vault/pi-status/issues"
+  },
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "pi-status"
+  ],
+  "scripts": {
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "biome lint . && tsc --noEmit && vitest run",
+    "pack:dry-run": "pnpm pack --dry-run"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}
