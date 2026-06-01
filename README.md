@@ -18,19 +18,25 @@ Or after publish:
 pi install npm:@pi-vault/pi-status
 ```
 
-## Local JSON config
+## Configuration
 
-You can opt into extra footer segments with JSON config:
+Use `/statusline` inside Pi to configure and persist statusline settings.
 
-- Default path: `~/.pi/agent/pi-status.json`
-- Override path: `PI_STATUS_CONFIG`
-- Relative `PI_STATUS_CONFIG` is resolved from current working directory
-- Config is loaded once at extension init (restart Pi after edits)
+Primary persisted location:
+
+- `statusLine` in Pi settings (`~/.pi/agent/settings.json` or `.pi/settings.json`)
+
+Read precedence:
+
+1. merged Pi settings (`~/.pi/agent/settings.json` + `.pi/settings.json`)
+2. built-in defaults
 
 ```json
 {
-  "segments": ["model-with-reasoning", "current-dir"],
-  "statusFilter": { "mode": "all", "hidden": [] }
+  "statusLine": {
+    "segments": ["model-with-reasoning", "current-dir"],
+    "filter": { "mode": "all", "hidden": [] }
+  }
 }
 ```
 
@@ -51,28 +57,31 @@ Supported segment IDs:
 - `five-hour-limit` (from `@pi-vault/pi-usage`, Codex only)
 - `weekly-limit` (from `@pi-vault/pi-usage`, Codex only)
 - `extension-statuses`
+- `project-root`
 
 Example:
 
 ```json
 {
-  "segments": [
-    "model",
-    "run-state",
-    "git-branch",
-    "context-used",
-    "context-remaining",
-    "session-id"
-  ]
+  "statusLine": {
+    "segments": [
+      "model",
+      "run-state",
+      "git-branch",
+      "context-used",
+      "context-remaining",
+      "session-id"
+    ]
+  }
 }
 ```
 
-`statusFilter` controls `extension-statuses`:
+`filter` controls `extension-statuses`:
 
 - `{"mode":"all","hidden":["extA"]}` = show all except hidden keys
 - `{"mode":"only","shown":["extA","extB"]}` = show only listed keys
 
-If the file is missing, unreadable, malformed, wrong shape, or has invalid entries, pi-status silently falls back to defaults.
+If config sources are missing, unreadable, malformed, wrong shape, or have invalid entries, pi-status silently falls back to defaults.
 
 ## Local Verification
 
