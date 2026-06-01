@@ -23,9 +23,16 @@ export type StatusLineSegmentId =
   | "used-tokens"
   | "total-input-tokens"
   | "total-output-tokens"
-  | "session-id";
+  | "session-id"
+  | "five-hour-limit"
+  | "weekly-limit"
+  | "extension-statuses";
 
 export type RunState = "busy" | "queued" | "idle";
+
+export type StatusFilter =
+  | { mode: "all"; hidden: string[] }
+  | { mode: "only"; shown: string[] };
 
 export type FooterRenderInput = {
   model?: ModelLike;
@@ -36,6 +43,16 @@ export type FooterRenderInput = {
   contextUsage?: { tokens?: number | null; contextWindow?: number; percent?: number | null };
   branchTotals?: { input: number; output: number; totalTokens: number };
   sessionId?: string;
+  usageState?: {
+    compatibility?: {
+      currentLiveProviderSnapshot?: {
+        providerId?: string;
+        windows: Array<{ key?: string; label?: string; usedPercent?: number; unavailableReason?: string | null }>;
+      } | null;
+    };
+  };
+  extensionStatuses?: ReadonlyMap<string, string>;
+  statusFilter: StatusFilter;
   segments: StatusLineSegmentId[];
 };
 
@@ -84,7 +101,68 @@ function contextColor(percent: number | null | undefined): "success" | "warning"
   return "error";
 }
 
-function formatSegment(id: StatusLineSegmentId, input: FooterRenderInput): [text: string, color: string] | null {
+function getRateWindow(
+  input: FooterRenderInput,
+  key: "fiveHour" | "weekly",
+): { usedPercent: number } | null {
+  const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
+  if (snapshot?.providerId !== "openai-codex") return null;
+  const window = snapshot.windows.find((item) => item.key === key);
+  if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) return null;
+  return { usedPercent: window.usedPercent };
+}
+
+function rateColor(usedPercent: number): "success" | "warning" | "error" {
+  if (usedPercent < 70) return "success";
+  if (usedPercent < 90) return "warning";
+  return "error";
+}
+
+const ANSI_PREFIX = `${String.fromCharCode(27)}[`;
+
+function hasAnsi(value: string): boolean {
+  return value.includes(ANSI_PREFIX);
+}
+
+function normalizeFilterList(input: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of input) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
+}
+
+function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): string | null {
+  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length === 0) return null;
+
+  const filter = input.statusFilter;
+  const blocked = filter.mode === "all" ? new Set(normalizeFilterList(filter.hidden)) : undefined;
+  const allowed = filter.mode === "only" ? new Set(normalizeFilterList(filter.shown)) : undefined;
+  const visible =
+    filter.mode === "all"
+      ? entries.filter(([key]) => !blocked?.has(key))
+      : entries.filter(([key]) => allowed?.has(key));
+
+  const parts = visible.slice(0, 5).map(([key, value]) => {
+    const trimmed = hasAnsi(value)
+      ? value
+      : value.replace(new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"), "");
+    return truncateToWidth(trimmed, 18, "...");
+  });
+
+  if (parts.length === 0) return null;
+  return parts.join(theme.fg("dim", " | "));
+}
+
+function formatSegment(
+  id: StatusLineSegmentId,
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): [text: string, color: string | null] | null {
   switch (id) {
     case "model": {
       const value = input.model?.name ?? input.model?.id;
@@ -136,6 +214,22 @@ function formatSegment(id: StatusLineSegmentId, input: FooterRenderInput): [text
     }
     case "session-id":
       return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
+    case "five-hour-limit": {
+      const window = getRateWindow(input, "fiveHour");
+      if (!window) return null;
+      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
+      return [`5h ${remaining}% left`, rateColor(window.usedPercent)];
+    }
+    case "weekly-limit": {
+      const window = getRateWindow(input, "weekly");
+      if (!window) return null;
+      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
+      return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
+    }
+    case "extension-statuses": {
+      const value = formatExtensionStatuses(input, theme);
+      return value ? [value, null] : null;
+    }
     default:
       return null;
   }
@@ -143,10 +237,11 @@ function formatSegment(id: StatusLineSegmentId, input: FooterRenderInput): [text
 
 export function buildFooterLine(input: FooterRenderInput, theme: ThemeLike, width: number): string {
   const parts = input.segments
-    .map((id) => formatSegment(id, input))
-    .filter((x): x is [string, string] => x !== null)
-    .map(([text, color]) => theme.fg(color, text));
+    .map((id) => formatSegment(id, input, theme))
+    .filter((x): x is [string, string | null] => x !== null)
+    .map(([text, color]) => (color ? theme.fg(color, text) : text));
 
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);
 }
+

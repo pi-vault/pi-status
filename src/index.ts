@@ -1,4 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  USAGE_CORE_READY_EVENT,
+  USAGE_CORE_REQUEST_EVENT,
+  USAGE_CORE_UPDATE_CURRENT_EVENT,
+} from "@pi-vault/pi-usage/events";
+import type { UsageCoreState } from "@pi-vault/pi-usage/types";
 import { loadConfig, type PiStatusConfig } from "./config.ts";
 import { buildFooterLine } from "./render.ts";
 
@@ -10,6 +16,7 @@ type FooterComponent = {
 
 type FooterDataLike = {
   getGitBranch: () => string | null;
+  getExtensionStatuses: () => ReadonlyMap<string, string>;
   onBranchChange?: (listener: () => void) => (() => void) | undefined;
 };
 
@@ -45,6 +52,15 @@ export default function createExtension(pi: ExtensionAPI): void {
   const config: PiStatusConfig = loadConfig();
   let currentCtx: ExtensionContext | undefined;
   let requestRender: (() => void) | undefined;
+  let usageState: UsageCoreState | undefined;
+
+  function acceptUsageState(payload: unknown): void {
+    if (!payload || typeof payload !== "object") return;
+    const maybe = payload as { state?: unknown };
+    const next = maybe.state && typeof maybe.state === "object" ? maybe.state : payload;
+    usageState = next as UsageCoreState;
+    requestRender?.();
+  }
 
   function installFooter(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
@@ -75,6 +91,9 @@ export default function createExtension(pi: ExtensionAPI): void {
               contextUsage: activeCtx.getContextUsage(),
               branchTotals: aggregateBranchTotals(activeCtx),
               sessionId: activeCtx.sessionManager.getSessionId(),
+              usageState,
+              extensionStatuses: footerData.getExtensionStatuses(),
+              statusFilter: config.statusFilter,
               segments: config.segments,
             },
             theme,
@@ -93,6 +112,21 @@ export default function createExtension(pi: ExtensionAPI): void {
     currentCtx = ctx;
     requestRender?.();
   }
+
+  const unsubscribeUsageReady = pi.events.on(USAGE_CORE_READY_EVENT, (payload: unknown) => {
+    acceptUsageState(payload);
+  });
+
+  const unsubscribeUsageUpdate = pi.events.on(USAGE_CORE_UPDATE_CURRENT_EVENT, (payload: unknown) => {
+    acceptUsageState(payload);
+  });
+
+  pi.events.emit(USAGE_CORE_REQUEST_EVENT, {
+    type: "current",
+    reply(payload: unknown) {
+      acceptUsageState(payload);
+    },
+  });
 
   pi.on("session_start", (_event, ctx) => {
     currentCtx = ctx;
@@ -115,6 +149,8 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => {
     currentCtx = undefined;
     requestRender = undefined;
+    unsubscribeUsageReady();
+    unsubscribeUsageUpdate();
     if (ctx.hasUI) ctx.ui.setFooter(undefined);
   });
 }
