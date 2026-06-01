@@ -20,7 +20,7 @@ pi install npm:@pi-vault/pi-status
 
 ## Local JSON config
 
-You can opt into extra local-only segments with JSON config:
+You can opt into extra footer segments with JSON config:
 
 - Default path: `~/.pi/agent/pi-status.json`
 - Override path: `PI_STATUS_CONFIG`
@@ -29,7 +29,8 @@ You can opt into extra local-only segments with JSON config:
 
 ```json
 {
-  "segments": ["model-with-reasoning", "current-dir"]
+  "segments": ["model-with-reasoning", "current-dir"],
+  "statusFilter": { "mode": "all", "hidden": [] }
 }
 ```
 
@@ -47,6 +48,9 @@ Supported segment IDs:
 - `total-input-tokens`
 - `total-output-tokens`
 - `session-id`
+- `five-hour-limit` (from `@pi-vault/pi-usage`, Codex only)
+- `weekly-limit` (from `@pi-vault/pi-usage`, Codex only)
+- `extension-statuses`
 
 Example:
 
@@ -63,7 +67,12 @@ Example:
 }
 ```
 
-If the file is missing, unreadable, malformed, wrong shape, or has invalid segment entries, pi-status silently falls back to defaults.
+`statusFilter` controls `extension-statuses`:
+
+- `{"mode":"all","hidden":["extA"]}` = show all except hidden keys
+- `{"mode":"only","shown":["extA","extB"]}` = show only listed keys
+
+If the file is missing, unreadable, malformed, wrong shape, or has invalid entries, pi-status silently falls back to defaults.
 
 ## Local Verification
 
