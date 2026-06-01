@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadConfig, type PiStatusConfig } from "./config.ts";
 import { buildFooterLine } from "./render.ts";
 
 type FooterComponent = {
@@ -7,24 +8,54 @@ type FooterComponent = {
   dispose?: () => void;
 };
 
+type FooterDataLike = {
+  getGitBranch: () => string | null;
+  onBranchChange?: (listener: () => void) => (() => void) | undefined;
+};
+
 type FooterFactory = (
   tui: { requestRender?: () => void },
   theme: { fg: (color: string, text: string) => string },
-  footerData: unknown,
+  footerData: FooterDataLike,
 ) => FooterComponent;
 
+function aggregateBranchTotals(ctx: ExtensionContext): { input: number; output: number; totalTokens: number } {
+  const totals = { input: 0, output: 0, totalTokens: 0 };
+  const branch = ctx.sessionManager.getBranch() as unknown[];
+
+  for (const entry of branch ?? []) {
+    if (!entry || typeof entry !== "object") continue;
+    const type = (entry as { type?: unknown }).type;
+    if (type !== "message") continue;
+    const message = (entry as {
+      message?: { role?: unknown; usage?: { input?: number; output?: number; totalTokens?: number } };
+    }).message;
+    if (message?.role !== "assistant") continue;
+    const usage = message.usage;
+    if (!usage) continue;
+    if (typeof usage.input === "number") totals.input += usage.input;
+    if (typeof usage.output === "number") totals.output += usage.output;
+    if (typeof usage.totalTokens === "number") totals.totalTokens += usage.totalTokens;
+  }
+
+  return totals;
+}
+
 export default function createExtension(pi: ExtensionAPI): void {
+  const config: PiStatusConfig = loadConfig();
   let currentCtx: ExtensionContext | undefined;
   let requestRender: (() => void) | undefined;
 
   function installFooter(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
 
-    const factory: FooterFactory = (tui, theme) => {
+    const factory: FooterFactory = (tui, theme, footerData) => {
       requestRender = () => tui.requestRender?.();
+      const unsubscribe = footerData.onBranchChange?.(() => tui.requestRender?.());
 
       return {
         dispose() {
+          unsubscribe?.();
           if (requestRender === tui.requestRender) {
             requestRender = undefined;
           }
@@ -39,6 +70,12 @@ export default function createExtension(pi: ExtensionAPI): void {
               model: activeCtx.model,
               cwd: activeCtx.cwd,
               thinkingLevel: String(pi.getThinkingLevel()),
+              gitBranch: footerData.getGitBranch(),
+              runState: !activeCtx.isIdle() ? "busy" : activeCtx.hasPendingMessages() ? "queued" : "idle",
+              contextUsage: activeCtx.getContextUsage(),
+              branchTotals: aggregateBranchTotals(activeCtx),
+              sessionId: activeCtx.sessionManager.getSessionId(),
+              segments: config.segments,
             },
             theme,
             width,
