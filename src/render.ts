@@ -3,8 +3,20 @@ import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
+// Color roles the live `buildFooterLine` rendering actually depends on. Kept
+// narrow on purpose: it only covers the segment colors and the "dim"
+// separator, not the full Pi `ThemeColor` union. `StatuslineMenuTheme` is
+// built as a superset of this so the same adapted theme can also feed the
+// bottom preview line.
+export type FooterRenderColor =
+  | "accent"
+  | "dim"
+  | "success"
+  | "warning"
+  | "error";
+
 export type ThemeLike = {
-  fg: (color: string, text: string) => string;
+  fg: (color: FooterRenderColor, text: string) => string;
 };
 
 export type ModelLike = {
@@ -217,7 +229,7 @@ function formatSegment(
   id: StatusLineSegmentId,
   input: FooterRenderInput,
   theme: ThemeLike,
-): [text: string, color: string | null] | null {
+): [text: string, color: FooterRenderColor | null] | null {
   switch (id) {
     case "model": {
       const value = input.model?.name ?? input.model?.id;
@@ -323,7 +335,7 @@ export function buildFooterLine(
 ): string {
   const parts = input.segments
     .map((id) => formatSegment(id, input, theme))
-    .filter((x): x is [string, string | null] => x !== null)
+    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
     .map(([text, color]) => (color ? theme.fg(color, text) : text));
 
   const line = parts.join(theme.fg("dim", " · "));
