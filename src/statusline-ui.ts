@@ -2,6 +2,7 @@ import {
   Key,
   matchesKey,
   truncateToWidth,
+  visibleWidth,
   type Component,
 } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "./config.ts";
@@ -12,26 +13,105 @@ import {
   type ThemeLike,
 } from "./render.ts";
 
-const SEGMENT_LABELS: Record<StatusLineSegmentId, string> = {
-  model: "Model",
-  "model-with-reasoning": "Model + Reasoning",
-  "project-root": "Project Root",
-  "current-dir": "Current Dir",
-  "git-branch": "Git Branch",
-  "run-state": "Run State",
-  "context-remaining": "Context Remaining",
-  "context-used": "Context Used",
-  "context-window-size": "Context Window",
-  "used-tokens": "Used Tokens",
-  "total-input-tokens": "Input Tokens",
-  "total-output-tokens": "Output Tokens",
-  "session-id": "Session ID",
-  "five-hour-limit": "5h Limit",
-  "weekly-limit": "Weekly Limit",
-  "extension-statuses": "Extension Statuses",
+const SEGMENT_METADATA: Record<
+  StatusLineSegmentId,
+  { label: string; description: string }
+> = {
+  model: {
+    label: "Model",
+    description:
+      "Show the current model name. Hidden when no model is available.",
+  },
+  "model-with-reasoning": {
+    label: "Model + Reasoning",
+    description:
+      "Show the current model name and reasoning level. Hidden when no model is available.",
+  },
+  "project-root": {
+    label: "Project Root",
+    description:
+      "Show the nearest project root folder name. Hidden when no project root is detected.",
+  },
+  "current-dir": {
+    label: "Current Dir",
+    description: "Show the current working directory.",
+  },
+  "git-branch": {
+    label: "Git Branch",
+    description: "Show the current Git branch. Hidden when unavailable.",
+  },
+  "run-state": {
+    label: "Run State",
+    description: "Show whether Pi is idle, queued, or busy.",
+  },
+  "context-remaining": {
+    label: "Context Remaining",
+    description:
+      "Show remaining context tokens. Hidden when context usage is unavailable.",
+  },
+  "context-used": {
+    label: "Context Used",
+    description:
+      "Show percent of context already used. Hidden when context usage is unavailable.",
+  },
+  "context-window-size": {
+    label: "Context Window",
+    description:
+      "Show the total context window size. Hidden when context usage is unavailable.",
+  },
+  "used-tokens": {
+    label: "Used Tokens",
+    description:
+      "Show total assistant tokens used in this branch. Hidden when unavailable.",
+  },
+  "total-input-tokens": {
+    label: "Input Tokens",
+    description:
+      "Show total assistant input tokens in this branch. Hidden when unavailable.",
+  },
+  "total-output-tokens": {
+    label: "Output Tokens",
+    description:
+      "Show total assistant output tokens in this branch. Hidden when unavailable.",
+  },
+  "session-id": {
+    label: "Session ID",
+    description: "Show the short session ID. Hidden when unavailable.",
+  },
+  "five-hour-limit": {
+    label: "5h Limit",
+    description: "Show remaining 5-hour Codex quota. Hidden when unavailable.",
+  },
+  "weekly-limit": {
+    label: "Weekly Limit",
+    description: "Show remaining weekly Codex quota. Hidden when unavailable.",
+  },
+  "extension-statuses": {
+    label: "Extension Statuses",
+    description:
+      "Show visible extension status values. Hidden when none are visible.",
+  },
 };
 
-type SegmentRow = { type: "segment"; id: StatusLineSegmentId; label: string };
+const STATUS_ROW_DESCRIPTION =
+  "Show or hide this extension status when extension-statuses is enabled.";
+const POLICY_ROW_LABEL = "New extension statuses";
+const POLICY_ROW_DESCRIPTION =
+  "Whether newly discovered extension statuses are shown by default.";
+
+const LABEL_COLUMN_WIDTH = 24;
+const LAYOUT_GAP = "  ";
+const MIN_DESCRIPTION_WIDTH = 12;
+
+const SHELL_TITLE = "Configure Status Line";
+const SHELL_SUBTITLE = "Select which items to display in the status line.";
+const SHELL_PLACEHOLDER = "Type to search";
+const HELP_BASE =
+  "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc";
+const HELP_SEARCHING =
+  "Toggle: Space  •  Reorder: disabled while search is active  •  Save: Enter  •  Cancel: Esc";
+
+type SegmentRow = { type: "segment"; id: StatusLineSegmentId };
 type StatusRow = { type: "status"; key: string; label: string };
 type NewRow = { type: "new"; label: string };
 type Row = SegmentRow | StatusRow | NewRow;
@@ -62,6 +142,53 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return j === n.length;
 }
 
+function renderRowLine(
+  row: {
+    cursor: string;
+    checkbox: string;
+    labelWithOrder: string;
+    description: string;
+  },
+  width: number,
+  theme: ThemeLike,
+): string {
+  const prefix = `${row.cursor} ${row.checkbox} `;
+  const prefixWidth = visibleWidth(prefix);
+  const alignedMinWidth =
+    prefixWidth +
+    LABEL_COLUMN_WIDTH +
+    LAYOUT_GAP.length +
+    MIN_DESCRIPTION_WIDTH;
+
+  if (width >= alignedMinWidth) {
+    const labelFitted = truncateToWidth(row.labelWithOrder, LABEL_COLUMN_WIDTH);
+    const labelPadded = labelFitted.padEnd(LABEL_COLUMN_WIDTH);
+    const descWidth = Math.max(
+      1,
+      width - prefixWidth - LABEL_COLUMN_WIDTH - LAYOUT_GAP.length,
+    );
+    const desc = truncateToWidth(row.description, descWidth);
+    return `${prefix}${labelPadded}${LAYOUT_GAP}${theme.fg("dim", desc)}`;
+  }
+
+  const separator = " - ";
+  const remainingWidth = width - prefixWidth;
+  if (remainingWidth < 1) {
+    return truncateToWidth(prefix, width);
+  }
+
+  if (remainingWidth <= separator.length + 1) {
+    return truncateToWidth(`${prefix}${row.labelWithOrder}`, width);
+  }
+
+  const labelWidth = Math.max(1, remainingWidth - separator.length - 1);
+  const label = truncateToWidth(row.labelWithOrder, labelWidth);
+  const fallbackBase = `${prefix}${label}${separator}`;
+  const fallbackDescWidth = Math.max(0, width - visibleWidth(fallbackBase));
+  const desc = truncateToWidth(row.description, fallbackDescWidth);
+  return `${fallbackBase}${theme.fg("dim", desc)}`;
+}
+
 export function createStatuslineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
@@ -74,11 +201,11 @@ export function createStatuslineEditor(options: {
     a.localeCompare(b),
   );
   let enabledSegments = [...options.config.segments];
-  const allSegments = Object.entries(SEGMENT_LABELS).map(([id, label]) => ({
+  const allSegments = Object.entries(SEGMENT_METADATA).map(([id, meta]) => ({
     type: "segment",
     id: id as StatusLineSegmentId,
-    label,
-  })) as SegmentRow[];
+    label: meta.label,
+  })) as Array<SegmentRow & { label: string }>;
 
   const shownNew = options.config.filter.mode === "all";
   let newPolicyShown = shownNew;
@@ -95,11 +222,13 @@ export function createStatuslineEditor(options: {
   let query = "";
 
   function rows(): Row[] {
-    const segRows = allSegments.filter((s) => includesFuzzy(s.label, query));
+    const segRows = allSegments
+      .filter((s) => includesFuzzy(s.label, query))
+      .map(({ id, label }) => ({ type: "segment", id, label }) as SegmentRow);
     const statusRows = orderedStatuses
       .filter((key) => includesFuzzy(key, query))
       .map((key) => ({ type: "status", key, label: key }) as StatusRow);
-    const newRow = [{ type: "new", label: "New extension statuses" } as NewRow];
+    const newRow = [{ type: "new", label: POLICY_ROW_LABEL } as NewRow];
     return [...segRows, ...statusRows, ...newRow];
   }
 
@@ -234,23 +363,16 @@ export function createStatuslineEditor(options: {
 
       const lines: string[] = [];
       lines.push(
-        truncateToWidth(options.theme.fg("accent", "Statusline editor"), width),
+        truncateToWidth(options.theme.fg("accent", SHELL_TITLE), width),
       );
       lines.push(
-        truncateToWidth(
-          `Search: ${query || "(none)"}  •  Toggle: Space  •  Save: Enter  •  Cancel: Esc`,
-          width,
-        ),
-      );
-      lines.push(
-        truncateToWidth(
-          query
-            ? "Reorder disabled while search is active"
-            : "Reorder segment rows with ← / →",
-          width,
-        ),
+        truncateToWidth(options.theme.fg("dim", SHELL_SUBTITLE), width),
       );
       lines.push(truncateToWidth("", width));
+      lines.push(
+        truncateToWidth(options.theme.fg("dim", SHELL_PLACEHOLDER), width),
+      );
+      lines.push(truncateToWidth(`> ${query}`, width));
 
       for (let i = 0; i < list.length; i++) {
         const row = list[i];
@@ -260,22 +382,49 @@ export function createStatuslineEditor(options: {
           const order = isEnabledSegment(row.id)
             ? ` (${enabledSegments.indexOf(row.id) + 1})`
             : "";
+          const meta = SEGMENT_METADATA[row.id];
+          const labelWithOrder = `${meta.label}${order}`;
           lines.push(
-            truncateToWidth(`${cursor} ${enabled} ${row.label}${order}`, width),
+            renderRowLine(
+              {
+                cursor,
+                checkbox: enabled,
+                labelWithOrder,
+                description: meta.description,
+              },
+              width,
+              options.theme,
+            ),
           );
           continue;
         }
         if (row.type === "status") {
           const enabled = shown.has(row.key) ? "[x]" : "[ ]";
           lines.push(
-            truncateToWidth(`${cursor} ${enabled} ${row.label}`, width),
+            renderRowLine(
+              {
+                cursor,
+                checkbox: enabled,
+                labelWithOrder: row.label,
+                description: STATUS_ROW_DESCRIPTION,
+              },
+              width,
+              options.theme,
+            ),
           );
           continue;
         }
+        const checkbox = `[${newPolicyShown ? "shown" : "hidden"}]`;
         lines.push(
-          truncateToWidth(
-            `${cursor} [${newPolicyShown ? "shown" : "hidden"}] ${row.label}`,
+          renderRowLine(
+            {
+              cursor,
+              checkbox,
+              labelWithOrder: POLICY_ROW_LABEL,
+              description: POLICY_ROW_DESCRIPTION,
+            },
             width,
+            options.theme,
           ),
         );
       }
@@ -283,6 +432,12 @@ export function createStatuslineEditor(options: {
       lines.push(truncateToWidth("", width));
       lines.push(truncateToWidth("Preview:", width));
       lines.push(truncateToWidth(preview, width));
+      lines.push(
+        truncateToWidth(
+          options.theme.fg("dim", query ? HELP_SEARCHING : HELP_BASE),
+          width,
+        ),
+      );
       return lines;
     },
   };
