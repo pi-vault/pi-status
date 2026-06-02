@@ -211,7 +211,6 @@ export default function createExtension(pi: ExtensionAPI): void {
             requestRender: () => tui.requestRender?.(),
           });
         },
-        { overlay: true },
       );
 
       if (!result) return;
