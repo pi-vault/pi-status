@@ -13,7 +13,7 @@ import {
   formatModelWithReasoning,
   type FooterRenderInput,
 } from "../src/render.ts";
-import { mapStatusDraftToFilter } from "../src/statusline-ui.ts";
+import { mapStatusDraftToFilter } from "../src/ui/statusline-editor.ts";
 
 function withDefaults(input: Omit<FooterRenderInput, "filter">): FooterRenderInput {
   return { ...input, filter: { mode: "all", hidden: [] } };
@@ -842,5 +842,264 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
     expect(renderWithFactory(footerSpy.calls[1])).toBe("");
     expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
+  });
+});
+
+describe("/statusline theme adaptation", () => {
+  function createBus() {
+    const listeners = new Map<string, Array<(payload: unknown) => void>>();
+    return {
+      emit(event: string, payload: unknown) {
+        for (const handler of listeners.get(event) ?? []) handler(payload);
+      },
+      on(event: string, handler: (payload: unknown) => void) {
+        listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+        return () => {
+          listeners.set(
+            event,
+            (listeners.get(event) ?? []).filter((current) => current !== handler),
+          );
+        };
+      },
+    };
+  }
+
+  function buildPiWithHandlers() {
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+    return { pi, handlers, registerCommand };
+  }
+
+  it("wraps a Pi-like theme before creating the editor", async () => {
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const fgCalls: Array<[string, string]> = [];
+    const boldCalls: string[] = [];
+    const piLikeTheme = {
+      fg: (color: string, text: string) => {
+        fgCalls.push([color, text]);
+        return `<fg:${color}:${text}>`;
+      },
+      bold: (text: string) => {
+        boldCalls.push(text);
+        return `<bold:${text}>`;
+      },
+    };
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    expect(commandCall).toBeDefined();
+    const handler = (
+      commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+    ).handler;
+
+    let receivedTheme: unknown;
+    customMock.mockImplementationOnce(
+      async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => {
+            handleInput: (data: string) => void;
+            render: (width: number) => string[];
+          }
+        )(
+          { requestRender: () => {} },
+          piLikeTheme,
+          {},
+          (result: unknown) => {
+            receivedTheme = result;
+          },
+        );
+        // Render the editor so theme calls actually happen; this also lets
+        // us confirm the wrapped theme delegates to the Pi-like theme
+        // through the live reference.
+        component.render(200);
+        component.handleInput("\x1b");
+        return null;
+      },
+    );
+
+    await handler("", ctx);
+
+    // The editor called into the live theme — prove it used the wrapped
+    // adapter by checking the original Pi-like theme received the calls.
+    expect(fgCalls.length).toBeGreaterThan(0);
+    expect(fgCalls.some(([color]) => color === "accent")).toBe(true);
+    expect(fgCalls.some(([color]) => color === "borderMuted")).toBe(true);
+    expect(boldCalls).toContain("Configure Status Line");
+    expect(receivedTheme).toBeNull();
+  });
+
+  it("falls back to noTheme when the runtime theme is missing fg", async () => {
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const incompleteTheme = {
+      // fg is missing — should trigger the noTheme fallback
+      bold: (_text: string) => "should-not-be-called",
+    };
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    expect(commandCall).toBeDefined();
+    const handler = (
+      commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+    ).handler;
+
+    let renderOutput: string[] = [];
+    let didThrow = false;
+    customMock.mockImplementationOnce(
+      async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => {
+            handleInput: (data: string) => void;
+            render: (width: number) => string[];
+          }
+        )(
+          { requestRender: () => {} },
+          incompleteTheme,
+          {},
+          () => {},
+        );
+        try {
+          renderOutput = component.render(200);
+        } catch (error) {
+          didThrow = true;
+          throw error;
+        }
+        component.handleInput("\x1b");
+        return null;
+      },
+    );
+
+    await expect(handler("", ctx)).resolves.toBeUndefined();
+    expect(didThrow).toBe(false);
+
+    // With noTheme as a fallback the editor still renders plain-text
+    // output. Verify the unstyled title text shows up.
+    expect(renderOutput[0]).toBe("Configure Status Line");
+  });
+
+  it("falls back to noTheme when the runtime theme is missing bold", async () => {
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const incompleteTheme = {
+      fg: (_color: string, text: string) => text,
+      // bold is missing
+    };
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    expect(commandCall).toBeDefined();
+    const handler = (
+      commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+    ).handler;
+
+    let didThrow = false;
+    customMock.mockImplementationOnce(
+      async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => {
+            handleInput: (data: string) => void;
+            render: (width: number) => string[];
+          }
+        )(
+          { requestRender: () => {} },
+          incompleteTheme,
+          {},
+          () => {},
+        );
+        try {
+          component.render(200);
+        } catch (error) {
+          didThrow = true;
+          throw error;
+        }
+        component.handleInput("\x1b");
+        return null;
+      },
+    );
+
+    await expect(handler("", ctx)).resolves.toBeUndefined();
+    expect(didThrow).toBe(false);
+  });
+
+  it("falls back to noTheme when ctx.ui.custom passes null as the theme", async () => {
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    expect(commandCall).toBeDefined();
+    const handler = (
+      commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+    ).handler;
+
+    let didThrow = false;
+    customMock.mockImplementationOnce(
+      async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => {
+            handleInput: (data: string) => void;
+            render: (width: number) => string[];
+          }
+        )(
+          { requestRender: () => {} },
+          null,
+          {},
+          () => {},
+        );
+        try {
+          component.render(200);
+        } catch (error) {
+          didThrow = true;
+          throw error;
+        }
+        component.handleInput("\x1b");
+        return null;
+      },
+    );
+
+    await expect(handler("", ctx)).resolves.toBeUndefined();
+    expect(didThrow).toBe(false);
   });
 });

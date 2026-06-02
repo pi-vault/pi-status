@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { Key, matchesKey, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../src/config.ts";
-import type { FooterRenderInput, ThemeLike } from "../src/render.ts";
-import { createStatuslineEditor } from "../src/statusline-ui.ts";
+import type { FooterRenderInput } from "../src/render.ts";
+import { createStatuslineEditor } from "../src/ui/statusline-editor.ts";
+import { noTheme, type StatuslineMenuTheme } from "../src/ui/statusline-theme.ts";
 
 type EditorComponent = Component & { handleInput: (data: string) => void };
 
@@ -15,7 +16,7 @@ const ESCAPE = "\x1b";
 const BACKSPACE = "\x7f";
 const SPACE = " ";
 
-const IDENTITY_THEME: ThemeLike = { fg: (_color, text) => text };
+const IDENTITY_THEME: StatuslineMenuTheme = noTheme;
 
 function makeConfig(overrides?: Partial<PiStatusConfig>): PiStatusConfig {
   return {
@@ -36,7 +37,7 @@ function makePreviewInput(): Omit<FooterRenderInput, "segments" | "filter"> {
 function makeEditor(options?: {
   config?: PiStatusConfig;
   discovered?: string[];
-  theme?: ThemeLike;
+  theme?: StatuslineMenuTheme;
 }) {
   const done = vi.fn();
   const requestRender = vi.fn();
@@ -726,5 +727,195 @@ describe("statusline editor discovered-status filter persistence", () => {
       mode: "only",
       shown: ["alpha-status"],
     });
+  });
+});
+
+type SpyCall = readonly unknown[];
+
+function makeSpyTheme(): {
+  theme: StatuslineMenuTheme;
+  calls: { fg: SpyCall[]; bold: SpyCall[]; dim: SpyCall[] };
+} {
+  const calls = { fg: [] as SpyCall[], bold: [] as SpyCall[], dim: [] as SpyCall[] };
+  // Spy passes text through unchanged so the editor's existing width
+  // hardening still applies to the rendered output. We verify the
+  // requested styling through call tracking, not through the returned
+  // string. This keeps the test independent of any specific ANSI
+  // encoding and lets the existing width tests continue to pass.
+  const theme: StatuslineMenuTheme = {
+    fg: (color, text) => {
+      calls.fg.push([color, text]);
+      return text;
+    },
+    bold: (text) => {
+      calls.bold.push([text]);
+      return text;
+    },
+    dim: (text) => {
+      calls.dim.push([text]);
+      return text;
+    },
+  };
+  return { theme, calls };
+}
+
+describe("statusline editor theme plumbing", () => {
+  it("renders the title as fg('accent', bold(title))", () => {
+    const { theme, calls } = makeSpyTheme();
+    const { editor } = makeEditor({ theme });
+    editor.render(200);
+
+    // The title is the only place we wrap bold inside fg("accent", …).
+    // Find the fg call whose payload is the bolded title — that uniquely
+    // identifies the title rendering.
+    const titleCall = calls.fg.find(
+      ([, payload]) => payload === "Configure Status Line",
+    );
+    expect(titleCall?.[0]).toBe("accent");
+
+    // The bold call must have wrapped the title text directly, not the
+    // already-wrapped fg result.
+    expect(calls.bold).toContainEqual(["Configure Status Line"]);
+  });
+
+  it("uses borderMuted for the section divider line", () => {
+    const { theme, calls } = makeSpyTheme();
+    const { editor } = makeEditor({ theme });
+    editor.render(200);
+
+    const dividerCall = calls.fg.find(
+      ([color, payload]) =>
+        color === "borderMuted" &&
+        typeof payload === "string" &&
+        payload.includes("─"),
+    );
+    expect(dividerCall).toBeDefined();
+    expect(dividerCall?.[0]).toBe("borderMuted");
+  });
+
+  it("uses dim for row descriptions, helper copy, and the search placeholder", () => {
+    const { theme, calls } = makeSpyTheme();
+    const { editor } = makeEditor({ theme });
+    editor.render(200);
+
+    // Collect every dim(text) target we expect to see at least once.
+    const dimTexts = new Set(calls.dim.map(([text]) => text as string));
+
+    // Row description copy
+    expect(
+      dimTexts.has("Current model name with reasoning level"),
+    ).toBe(true);
+    // Subtitle
+    expect(dimTexts.has("Select which items to display in the status line."))
+      .toBe(true);
+    // Search placeholder
+    expect(dimTexts.has("Type to search")).toBe(true);
+    // Help line copy
+    expect(
+      dimTexts.has(
+        "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
+      ),
+    ).toBe(true);
+    // Empty-state hint
+    expect(dimTexts.has("No extension statuses yet.")).toBe(true);
+  });
+
+  it("uses fg('accent', ...) for the title and fg('borderMuted', ...) for the divider", () => {
+    const { theme, calls } = makeSpyTheme();
+    const { editor } = makeEditor({ theme });
+    editor.render(200);
+
+    const colors = new Set(calls.fg.map(([color]) => color as string));
+    expect(colors.has("accent")).toBe(true);
+    expect(colors.has("borderMuted")).toBe(true);
+  });
+
+  it("keeps the rendered output within the requested width when the theme wraps text", () => {
+    // Use a theme that wraps the text with real ANSI escape sequences so we
+    // can verify the editor's truncateToWidth still respects the requested
+    // visible width even when the rendered text contains zero-width styling.
+    const ANSI_THEME: StatuslineMenuTheme = {
+      fg: (_color, text) => `\x1b[33m${text}\x1b[0m`,
+      bold: (text) => `\x1b[1m${text}\x1b[22m`,
+      dim: (text) => `\x1b[2m${text}\x1b[22m`,
+    };
+    for (const width of [1, 5, 30, 80, 200]) {
+      const { editor } = makeEditor({
+        theme: ANSI_THEME,
+        discovered: ["alpha-status"],
+      });
+      const lines = editor.render(width);
+      for (const line of lines) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+});
+
+describe("statusline editor live theme sync", () => {
+  it("recolors menu chrome and preview when the live theme changes", () => {
+    // Build a mutable theme object that the editor can read on every
+    // render. The accent tag changes between renders so the second
+    // render produces visibly different output, which proves the editor
+    // is reading the live theme on every render instead of caching the
+    // first render's styling.
+    let accentTag = "first-accent";
+    let borderTag = "first-border";
+    const theme: StatuslineMenuTheme = {
+      fg: (color, text) => {
+        if (color === "accent") return `[${accentTag}]${text}[/${accentTag}]`;
+        if (color === "borderMuted")
+          return `[${borderTag}]${text}[/${borderTag}]`;
+        return text;
+      },
+      bold: (text) => `[B]${text}[/B]`,
+      dim: (text) => text,
+    };
+
+    const editor = createStatuslineEditor({
+      config: makeConfig({ segments: ["model-with-reasoning"] }),
+      discoveredStatuses: [],
+      previewInput: {
+        ...makePreviewInput(),
+        model: { id: "gpt-5", name: "GPT-5", reasoning: true },
+      },
+      theme,
+      done: vi.fn(),
+      requestRender: vi.fn(),
+    }) as EditorComponent;
+
+    const firstLines = editor.render(200);
+    const firstTitle = firstLines[0] ?? "";
+    expect(firstTitle).toContain("[first-accent]");
+    expect(firstTitle).toContain("[B]Configure Status Line[/B]");
+
+    // The divider is the only line that uses borderMuted.
+    const firstDivider = firstLines.find((line) =>
+      line.startsWith("[first-border]"),
+    );
+    expect(firstDivider).toBeDefined();
+    const firstPreview = firstLines.at(-2) ?? "";
+    expect(firstPreview).toContain("[first-accent]");
+    expect(firstPreview).toContain("GPT-5 [med]");
+
+    // Pi swaps the live theme mid-session: update the captured tags.
+    accentTag = "second-accent";
+    borderTag = "second-border";
+
+    // Invalidate and rerender — should pick up the new colors without
+    // reopening `/statusline`.
+    editor.invalidate();
+    const secondLines = editor.render(200);
+    const secondTitle = secondLines[0] ?? "";
+    expect(secondTitle).toContain("[second-accent]");
+    expect(secondTitle).toContain("[B]Configure Status Line[/B]");
+
+    const secondDivider = secondLines.find((line) =>
+      line.startsWith("[second-border]"),
+    );
+    expect(secondDivider).toBeDefined();
+    const secondPreview = secondLines.at(-2) ?? "";
+    expect(secondPreview).toContain("[second-accent]");
+    expect(secondPreview).toContain("GPT-5 [med]");
   });
 });
