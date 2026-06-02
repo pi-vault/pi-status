@@ -33,7 +33,7 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
 const KNOWN_SEGMENTS = new Set<StatusLineSegmentId>([
   "model",
   "model-with-reasoning",
-  "project-root",
+  "project-name",
   "current-dir",
   "git-branch",
   "run-state",

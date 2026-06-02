@@ -16,7 +16,7 @@ export type ModelLike = {
 export type StatusLineSegmentId =
   | "model"
   | "model-with-reasoning"
-  | "project-root"
+  | "project-name"
   | "current-dir"
   | "git-branch"
   | "run-state"
@@ -231,7 +231,7 @@ function formatSegment(
       const value = abbreviateHomeDir(input.cwd);
       return value ? [value, "success"] : null;
     }
-    case "project-root": {
+    case "project-name": {
       const value = findProjectRootLabel(input.cwd);
       return value ? [value, "success"] : null;
     }

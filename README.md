@@ -44,6 +44,7 @@ Supported segment IDs:
 
 - `model`
 - `model-with-reasoning`
+- `project-name`
 - `current-dir`
 - `git-branch`
 - `run-state`
@@ -57,7 +58,6 @@ Supported segment IDs:
 - `five-hour-limit` (from `@pi-vault/pi-usage`, Codex only)
 - `weekly-limit` (from `@pi-vault/pi-usage`, Codex only)
 - `extension-statuses`
-- `project-root`
 
 Example:
 

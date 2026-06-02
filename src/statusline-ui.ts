@@ -23,92 +23,86 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   {
     id: "model",
     label: "Model",
-    description:
-      "Show the current model name. Hidden when no model is available.",
+    description: "Current model name",
   },
   {
     id: "model-with-reasoning",
     label: "Model + Reasoning",
-    description:
-      "Show the current model name and reasoning level. Hidden when no model is available.",
+    description: "Current model name with reasoning level",
   },
   {
-    id: "project-root",
-    label: "Project Root",
-    description:
-      "Show the nearest project root folder name. Hidden when no project root is detected.",
+    id: "project-name",
+    label: "Project Name",
+    description: "Project name (omitted when unavailable)",
   },
   {
     id: "current-dir",
     label: "Current Dir",
-    description: "Show the current working directory.",
+    description: "Current working directory",
   },
   {
     id: "git-branch",
     label: "Git Branch",
-    description: "Show the current Git branch. Hidden when unavailable.",
+    description: "Current Git branch (omitted when unavailable)",
   },
   {
     id: "run-state",
     label: "Run State",
-    description: "Show whether Pi is idle, queued, or busy.",
+    description: "Pi status (idle, queued, busy)",
   },
   {
     id: "context-remaining",
     label: "Context Remaining",
     description:
-      "Show remaining context tokens. Hidden when context usage is unavailable.",
+      "Percentage of context window remaining (omitted when unknown)",
   },
   {
     id: "context-used",
     label: "Context Used",
-    description:
-      "Show percent of context already used. Hidden when context usage is unavailable.",
+    description: "Percentage of context window used (omitted when unknown)",
   },
   {
     id: "context-window-size",
     label: "Context Window",
-    description:
-      "Show the total context window size. Hidden when context usage is unavailable.",
+    description: "Total context window size in tokens (omitted when unknown)",
   },
   {
     id: "used-tokens",
     label: "Used Tokens",
-    description:
-      "Show total assistant tokens used in this branch. Hidden when unavailable.",
+    description: "Total tokens used in session (omitted when zero)",
   },
   {
     id: "total-input-tokens",
     label: "Input Tokens",
-    description:
-      "Show total assistant input tokens in this branch. Hidden when unavailable.",
+    description: "Total input tokens used in session",
   },
   {
     id: "total-output-tokens",
     label: "Output Tokens",
-    description:
-      "Show total assistant output tokens in this branch. Hidden when unavailable.",
+    description: "Total output tokens used in session",
   },
   {
     id: "session-id",
     label: "Session ID",
-    description: "Show the short session ID. Hidden when unavailable.",
+    description: "Current session ID (omitted when unavailable)",
   },
   {
     id: "five-hour-limit",
     label: "5h Limit",
-    description: "Show remaining 5-hour Codex quota. Hidden when unavailable.",
+    description:
+      "Remaining usage on the primary usage limit (omitted when unavailable)",
   },
   {
     id: "weekly-limit",
     label: "Weekly Limit",
-    description: "Show remaining weekly Codex quota. Hidden when unavailable.",
+    description:
+      "Remaining usage on the secondary usage limit (omitted when unavailable)",
   },
   {
     id: "extension-statuses",
     label: "Extension Statuses",
     description:
-      "Show visible extension status values. Hidden when none are visible.",
+      "Visible extension status values (omitted when none are visible)",
   },
 ] as const;
 
@@ -116,12 +110,10 @@ const SEGMENT_METADATA = new Map(
   SEGMENT_ORDER.map((segment) => [segment.id, segment]),
 );
 
-const STATUS_ROW_DESCRIPTION =
-  "Show or hide this extension status when extension-statuses is enabled.";
+const STATUS_ROW_DESCRIPTION = "Visible when extension-statuses is enabled";
 const POLICY_ROW_LABEL = "New extension statuses";
-const POLICY_ROW_DESCRIPTION =
-  "Whether newly discovered extension statuses are shown by default.";
-const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses discovered yet.";
+const POLICY_ROW_DESCRIPTION = "Default visibility for new extension statuses";
+const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses yet.";
 const SEGMENT_SECTION_TITLE = "Status line items";
 const STATUS_SECTION_TITLE = "Extension statuses";
 
@@ -224,12 +216,19 @@ function renderRowLine(
   return `${fallbackBase}${theme.fg("dim", desc)}`;
 }
 
-function renderSectionHeader(text: string, width: number, theme: ThemeLike): string {
+function renderSectionHeader(
+  text: string,
+  width: number,
+  theme: ThemeLike,
+): string {
   return truncateToWidth(theme.fg("dim", text), width);
 }
 
 function renderDivider(width: number, theme: ThemeLike): string {
-  return truncateToWidth(theme.fg("dim", "─".repeat(Math.max(1, width))), width);
+  return truncateToWidth(
+    theme.fg("dim", "─".repeat(Math.max(1, width))),
+    width,
+  );
 }
 
 function renderHint(text: string, width: number, theme: ThemeLike): string {
@@ -273,11 +272,12 @@ export function createStatuslineEditor(options: {
       id,
     })) as SegmentInteractiveRow[];
 
-    const disabled = SEGMENT_ORDER.filter((segment) => !isEnabledSegment(segment.id))
-      .map((segment) => ({
-        type: "segment",
-        id: segment.id,
-      })) as SegmentInteractiveRow[];
+    const disabled = SEGMENT_ORDER.filter(
+      (segment) => !isEnabledSegment(segment.id),
+    ).map((segment) => ({
+      type: "segment",
+      id: segment.id,
+    })) as SegmentInteractiveRow[];
 
     const policy: PolicyInteractiveRow = { type: "policy" };
     const statuses = orderedStatuses.map((key) => ({
@@ -298,7 +298,10 @@ export function createStatuslineEditor(options: {
     }
 
     if (row.type === "policy") {
-      return includesFuzzy(`${POLICY_ROW_LABEL} ${POLICY_ROW_DESCRIPTION}`, query);
+      return includesFuzzy(
+        `${POLICY_ROW_LABEL} ${POLICY_ROW_DESCRIPTION}`,
+        query,
+      );
     }
 
     return includesFuzzy(`${row.key} ${STATUS_ROW_DESCRIPTION}`, query);
@@ -563,7 +566,6 @@ export function createStatuslineEditor(options: {
       }
 
       lines.push(truncateToWidth("", width));
-      lines.push(truncateToWidth("Preview:", width));
       lines.push(truncateToWidth(preview, width));
       lines.push(
         truncateToWidth(
