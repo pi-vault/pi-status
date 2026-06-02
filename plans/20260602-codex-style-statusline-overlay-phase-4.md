@@ -1,8 +1,8 @@
-# Phase 4: Hardening, Width Polish, And Regression Coverage
+# Phase 4: Inline Dashboard, Width Hardening, And Residual Coverage
 
 ## Usable Result
 
-The refactored `/statusline` overlay is stable across realistic terminal widths and has direct tests for the behavior introduced in Phases 1 through 3.
+`/statusline` stops opening as an overlay and instead renders inline below the chat box, while keeping the current Phase 3 picker behavior, hardening width handling, and closing the remaining direct UI test gaps.
 
 ## Dependencies
 
@@ -10,42 +10,77 @@ The refactored `/statusline` overlay is stable across realistic terminal widths 
 
 ## Public Interface
 
-- No config or command-surface changes in this phase.
-- No new settings, toggles, or segment IDs.
+- No config, persisted-shape, or command-name changes in this phase.
+- No new settings, toggles, segment IDs, or theme interfaces.
+- `/statusline` changes presentation mode only:
+  - render as an inline custom UI below the chat box
+  - do not use overlay mode
 
 ## Implementation
 
-- Tighten width handling for the final picker layout:
-  - checkbox + label column
-  - description column
+- Treat this phase as a narrow follow-up to the already-complete Phase 3 implementation.
+- Use `/Users/lanh/Developer/pi-vault/thinkscape-pi-status` as the reference for UI surface placement only:
+  - call `ctx.ui.custom(...)` without `{ overlay: true }`
+  - render inline in the terminal flow below the chat box
+  - do not copy thinkscape's immediate-save behavior, top preview placement, or command structure
+- Keep the current interaction model unchanged:
+  - `Up` / `Down` move across filtered interactive rows
+  - `Space` toggles the selected row
+  - `Left` / `Right` reorder enabled segment rows only
+  - `Enter` saves
+  - `Esc` cancels
+- Keep the current row model and section/search behavior unchanged.
+- Keep `createStatuslineEditor(...)` as the `/statusline` UI entrypoint; do not replace it with a separate inline menu component.
+- Keep the current two layout modes in `src/statusline-ui.ts`:
+  - aligned columns when width can fit prefix + fixed label column + gap + minimum description width
+  - fallback `label - description` layout when it cannot
+- Keep the current layout constants unchanged:
+  - `LABEL_COLUMN_WIDTH = 24`
+  - `LAYOUT_GAP = "  "`
+  - `MIN_DESCRIPTION_WIDTH = 12`
+- Preserve deterministic truncation rules:
+  - do not vary column widths by row content or selection
+  - if fallback mode cannot fit separator plus at least one description character, render only prefix + truncated label
+  - selected rows must preserve the leading `>` whenever width is at least 1
+- Tighten width handling for:
+  - interactive rows
+  - subtitle, hint, and section lines
   - bottom preview line
   - help footer line
-- Ensure active-row highlighting remains readable under narrow widths.
-- Ensure dim text for subtitles, hints, and descriptions remains legible without overpowering the active row.
-- Keep truncation deterministic so row alignment does not jump while navigating.
-- Expand overlay-specific test coverage, preferably in focused UI tests if `tests/index.test.ts` becomes too crowded.
-- Add direct tests for:
-  - row ordering across enabled and disabled segments
-  - section rendering and empty-state rendering
-  - search filtering over label and description text
-  - cursor skipping non-interactive rows
-  - reorder constraints
-  - policy-row mapping to `all+hidden` and `only+shown`
-  - discovered extension-status toggle mapping
-  - bottom preview updates from draft state
-  - visible search input and backspace behavior
-- Keep existing config, render, and extension wiring tests intact.
+- Change the preview width budget to use the full inline surface width when calling `buildFooterLine(...)` so preview truncation matches the requested render width exactly.
+- Update `/statusline` command wiring in `src/index.ts` to remove overlay mode.
+- Do not revisit section ordering, preview placement, description copy, config mapping, or command naming in this phase.
 
 ## Verification
 
-- Test narrow-width rendering for labels, descriptions, help text, and preview truncation.
-- Test active row remains identifiable after truncation.
-- Test no regressions in config loading, filter mapping, footer rendering, and `/statusline` wiring.
+- Keep all existing editor, config, render, and footer wiring tests passing.
+- Add width-focused UI tests in `tests/statusline-ui.test.ts` for:
+  - selected row remains identifiable at extremely small widths
+  - aligned wide-width row output stays exact
+  - narrow-width fallback row output stays deterministic
+  - preview truncates to the requested width without the extra two-column loss
+  - default help line and searching help line both truncate within width and remain distinct
+  - all rendered lines stay within width for representative small and normal terminal widths
+- Add direct UI persistence tests for discovered extension-status toggles:
+  - in `all` mode, hiding one discovered status saves `filter: { mode: "all", hidden: [...] }`
+  - in `only` mode, showing one discovered status saves `filter: { mode: "only", shown: [...] }`
+- Extend `tests/index.test.ts` to cover `/statusline` UI invocation:
+  - assert `ctx.ui.custom(...)` is used for `/statusline`
+  - assert it is invoked without `{ overlay: true }`
+  - keep save and cancel behavior unchanged
 - Run `pnpm test`.
 - Run `pnpm typecheck`.
 
 ## Completion Criteria
 
-- The new overlay is stable enough for routine use in narrow and wide terminals.
-- Regressions in overlay behavior are covered directly by tests instead of only indirectly through runtime wiring.
-- The refactor can be maintained without relying on manual Pi smoke tests for every small UI change.
+- `/statusline` opens inline below the chat box instead of in overlay mode.
+- Width-driven rendering no longer loses extra columns or changes shape unpredictably while navigating.
+- The inline picker remains usable in narrow terminals without changing its Phase 3 interaction contract.
+- Remaining UI-level filter, placement, and width regressions are covered directly by tests instead of inferred through other layers.
+
+## Assumptions
+
+- Phase 1 through Phase 3 behavior is already implemented and should not be reopened here.
+- The `thinkscape-pi-status` reference applies to surface placement only, not to its top preview or immediate persistence model.
+- “Width hardening” means preserving the current layout design, not redesigning it.
+- Automated tests are the primary verification mechanism for this phase; no manual Pi smoke test is required unless runtime-only issues appear.
