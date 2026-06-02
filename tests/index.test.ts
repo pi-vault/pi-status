@@ -586,4 +586,261 @@ describe("extension wiring", () => {
       process.env.HOME = oldHome;
     }
   });
+
+  function buildPiWithHandlers() {
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+    return { pi, handlers, registerCommand };
+  }
+
+  function buildSetFooterSpy() {
+    const calls: unknown[] = [];
+    const setFooter = (factory: unknown) => {
+      calls.push(factory);
+    };
+    return { calls, setFooter };
+  }
+
+  function renderWithFactory(
+    factory: unknown,
+    options: { gitBranch?: string | null; width?: number } = {},
+  ): string {
+    if (typeof factory !== "function") return "";
+    const component = (
+      factory as (
+        tui: unknown,
+        theme: unknown,
+        footerData: unknown,
+      ) => { render: (width: number) => string[] }
+    )(
+      { requestRender: () => {} },
+      { fg: (_c: string, t: string) => t },
+      {
+        getGitBranch: () => options.gitBranch ?? null,
+        getExtensionStatuses: () => new Map(),
+      },
+    );
+    return component.render(options.width ?? 200).join("\n");
+  }
+
+  it("swaps to empty footer during /statusline editor and restores live footer on save", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-footer-save-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const globalSettings = join(globalHome, ".pi/agent/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(join(project, ".pi/settings.json"), JSON.stringify({ y: 1 }), "utf8");
+
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+
+    try {
+      createExtension(pi);
+
+      const ctx = createContext({
+        cwd: project,
+        ui: {
+          ...createContext().ui,
+          setFooter: footerSpy.setFooter,
+          custom: customMock,
+        },
+      });
+
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+      // session_start installed the live footer and nothing else yet
+      expect(footerSpy.calls).toHaveLength(1);
+      expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
+
+      const commandCall = registerCommand.mock.calls.find(([name]) => name === "statusline");
+      expect(commandCall).toBeDefined();
+      const handler = (
+        commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+      ).handler;
+
+      customMock.mockImplementationOnce(
+        async (factory: (...args: unknown[]) => unknown) => {
+          // Empty footer must be installed before custom UI opens
+          expect(footerSpy.calls).toHaveLength(2);
+          expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+
+          let savedResult: unknown = null;
+          const component = (
+            factory as unknown as (
+              ...args: unknown[]
+            ) => { handleInput: (data: string) => void }
+          )(
+            { requestRender: () => {} },
+            { fg: (_c: string, t: string) => t },
+            {},
+            (result: unknown) => {
+              savedResult = result;
+            },
+          );
+          component.handleInput("\r");
+          return savedResult;
+        },
+      );
+
+      await handler("", ctx);
+
+      // Live footer must be restored after custom UI resolves (save path)
+      expect(footerSpy.calls).toHaveLength(3);
+      expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
+
+      const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
+      expect(saved.statusLine).toBeDefined();
+      expect(saved.statusLine.segments).toEqual([
+        "model-with-reasoning",
+        "current-dir",
+      ]);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+
+  it("swaps to empty footer during /statusline editor and restores live footer on cancel", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-footer-cancel-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    const beforeContent = JSON.stringify({ y: 1 });
+    writeFileSync(projectSettings, beforeContent, "utf8");
+
+    const { pi, handlers, registerCommand } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+
+    try {
+      createExtension(pi);
+
+      const ctx = createContext({
+        cwd: project,
+        ui: {
+          ...createContext().ui,
+          setFooter: footerSpy.setFooter,
+          custom: customMock,
+        },
+      });
+
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+      expect(footerSpy.calls).toHaveLength(1);
+      expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
+
+      const commandCall = registerCommand.mock.calls.find(([name]) => name === "statusline");
+      expect(commandCall).toBeDefined();
+      const handler = (
+        commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+      ).handler;
+
+      customMock.mockImplementationOnce(
+        async (factory: (...args: unknown[]) => unknown) => {
+          // Empty footer must be installed before custom UI opens
+          expect(footerSpy.calls).toHaveLength(2);
+          expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+
+          const component = (
+            factory as unknown as (
+              ...args: unknown[]
+            ) => { handleInput: (data: string) => void }
+          )(
+            { requestRender: () => {} },
+            { fg: (_c: string, t: string) => t },
+            {},
+            () => {},
+          );
+          component.handleInput("\x1b");
+          return null;
+        },
+      );
+
+      await handler("", ctx);
+
+      // Live footer must be restored even after cancel
+      expect(footerSpy.calls).toHaveLength(3);
+      expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
+
+      // Cancel must not persist any changes
+      expect(readFileSync(projectSettings, "utf8")).toBe(beforeContent);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+
+  it("restores live footer when ctx.ui.custom throws during /statusline", async () => {
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    expect(footerSpy.calls).toHaveLength(1);
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
+
+    const commandCall = registerCommand.mock.calls.find(([name]) => name === "statusline");
+    expect(commandCall).toBeDefined();
+    const handler = (
+      commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> }
+    ).handler;
+
+    let customObservedFooterState: number = -1;
+    customMock.mockImplementationOnce(async () => {
+      // Empty footer must be installed before custom UI runs
+      customObservedFooterState = footerSpy.calls.length;
+      expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("");
+      throw new Error("custom UI failed");
+    });
+
+    await expect(handler("", ctx)).rejects.toThrow("custom UI failed");
+
+    // Empty footer was installed before the throw and live footer is restored in finally
+    expect(customObservedFooterState).toBe(2);
+    expect(footerSpy.calls).toHaveLength(3);
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
+    expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+    expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
+  });
 });
