@@ -61,8 +61,7 @@ function renderLines(editor: EditorComponent, width = 120): string[] {
 }
 
 function rowLines(lines: string[]): string[] {
-  const previewIndex = lines.indexOf("Preview:");
-  return lines.slice(5, previewIndex - 1);
+  return lines.slice(5, -3);
 }
 
 function activeInteractiveRow(lines: string[]): string | undefined {
@@ -91,14 +90,13 @@ describe("statusline editor shell", () => {
     expect(renderLines(editor)[4]).toBe("> mod");
   });
 
-  it("always renders the preview block and help line", () => {
+  it("always renders the preview line and help line at the bottom", () => {
     const { editor } = makeEditor();
     const lines = renderLines(editor);
-    const previewIndex = lines.indexOf("Preview:");
 
-    expect(previewIndex).toBeGreaterThan(0);
-    expect(lines[previewIndex - 1]).toBe("");
-    expect(lines[previewIndex + 1].length).toBeGreaterThan(0);
+    expect(lines).not.toContain("Preview:");
+    expect(lines.at(-3)).toBe("");
+    expect((lines.at(-2) ?? "").length).toBeGreaterThan(0);
     expect(lines.at(-1)).toBe(
       "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
     );
@@ -185,12 +183,12 @@ describe("statusline editor sections and ordering", () => {
     const reasoningIndex = lines.findIndex((line) =>
       line.includes("Model + Reasoning"),
     );
-    const projectRootIndex = lines.findIndex((line) =>
-      line.includes("Project Root"),
+    const projectNameIndex = lines.findIndex((line) =>
+      line.includes("Project Name"),
     );
 
     expect(modelIndex).toBeLessThan(reasoningIndex);
-    expect(reasoningIndex).toBeLessThan(projectRootIndex);
+    expect(reasoningIndex).toBeLessThan(projectNameIndex);
   });
 
   it("keeps discovered extension-status rows alphabetically sorted", () => {
@@ -224,17 +222,17 @@ describe("statusline editor sections and ordering", () => {
     const lines = rowLines(renderLines(editor, 200));
 
     expect(lines.some((line) => line.includes("New extension statuses"))).toBe(true);
-    expect(lines).toContain("No extension statuses discovered yet.");
+    expect(lines).toContain("No extension statuses yet.");
   });
 });
 
 describe("statusline editor search", () => {
   it("searches segment rows by label and description", () => {
     const { editor } = makeEditor();
-    for (const char of "nearest") editor.handleInput(char);
+    for (const char of "queued") editor.handleInput(char);
     const lines = rowLines(renderLines(editor, 200));
 
-    expect(lines.some((line) => line.includes("Project Root"))).toBe(true);
+    expect(lines.some((line) => line.includes("Run State"))).toBe(true);
     expect(lines.some((line) => line.includes("Model + Reasoning"))).toBe(false);
   });
 
@@ -253,7 +251,7 @@ describe("statusline editor search", () => {
 
   it("searches the policy row by label and description", () => {
     const { editor } = makeEditor({ discovered: ["custom-status"] });
-    for (const char of "newly") editor.handleInput(char);
+    for (const char of "default") editor.handleInput(char);
     const lines = rowLines(renderLines(editor, 200));
 
     expect(lines.some((line) => line.includes("New extension statuses"))).toBe(true);
@@ -268,7 +266,7 @@ describe("statusline editor search", () => {
     expect(lines).not.toContain("Status line items");
     expect(lines).not.toContain("Extension statuses");
     expect(lines.some((line) => /^─+$/.test(line))).toBe(false);
-    expect(lines).not.toContain("No extension statuses discovered yet.");
+    expect(lines).not.toContain("No extension statuses yet.");
   });
 
   it("does not force the policy row visible during search", () => {
@@ -294,16 +292,12 @@ describe("statusline editor descriptions", () => {
 
     expect(
       lines.some((line) =>
-        line.includes(
-          "Show the current model name and reasoning level. Hidden when no model is available.",
-        ),
+        line.includes("Current model name with reasoning level"),
       ),
     ).toBe(true);
     expect(
       lines.some((line) =>
-        line.includes(
-          "Show the nearest project root folder name. Hidden when no project root is detected.",
-        ),
+        line.includes("Project name (omitted when unavailable)"),
       ),
     ).toBe(true);
   });
@@ -314,16 +308,12 @@ describe("statusline editor descriptions", () => {
 
     expect(
       lines.some((line) =>
-        line.includes(
-          "Show or hide this extension status when extension-statuses is enabled.",
-        ),
+        line.includes("Visible when extension-statuses is enabled"),
       ),
     ).toBe(true);
     expect(
       lines.some((line) =>
-        line.includes(
-          "Whether newly discovered extension statuses are shown by default.",
-        ),
+        line.includes("Default visibility for new extension statuses"),
       ),
     ).toBe(true);
   });
@@ -359,6 +349,17 @@ describe("statusline editor interactions", () => {
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
 
     expect(saved?.segments).toEqual(["current-dir", "model"]);
+  });
+
+  it("moves enabled segments later with right", () => {
+    const { editor, done } = makeEditor({
+      config: makeConfig({ segments: ["model", "current-dir", "git-branch"] }),
+    });
+    editor.handleInput(RIGHT);
+    editor.handleInput(ENTER);
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+
+    expect(saved?.segments).toEqual(["current-dir", "model", "git-branch"]);
   });
 
   it("keeps left/right as no-ops for disabled segments", () => {
@@ -412,7 +413,41 @@ describe("statusline editor interactions", () => {
     expect(escEditor.done).toHaveBeenCalledWith(null);
   });
 
-  it("preserves keybinding matching for the original keys", () => {
+  it("persists the current draft on Enter with all pending changes", () => {
+    const initialConfig = makeConfig({
+      segments: ["model", "current-dir", "git-branch"],
+    });
+    const { editor, done } = makeEditor({ config: initialConfig });
+    editor.handleInput(DOWN);
+    editor.handleInput(SPACE); // toggles off current-dir
+    editor.handleInput(ENTER);
+
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+    expect(saved?.segments).toEqual(["model", "git-branch"]);
+  });
+
+  it("leaves the runtime config unchanged on Escape", () => {
+    const initialConfig = makeConfig({
+      segments: ["model", "current-dir", "git-branch"],
+    });
+    const { editor, done } = makeEditor({ config: initialConfig });
+    editor.handleInput(DOWN);
+    editor.handleInput(SPACE);
+    editor.handleInput(DOWN);
+    editor.handleInput(SPACE);
+    editor.handleInput(DOWN);
+    editor.handleInput(SPACE);
+    editor.handleInput(ESCAPE);
+
+    expect(done).toHaveBeenCalledWith(null);
+    expect(initialConfig.segments).toEqual([
+      "model",
+      "current-dir",
+      "git-branch",
+    ]);
+  });
+
+  it("preserves keybinding matching for the editor keys", () => {
     expect(matchesKey(UP, Key.up)).toBe(true);
     expect(matchesKey(DOWN, Key.down)).toBe(true);
     expect(matchesKey(LEFT, Key.left)).toBe(true);
@@ -425,13 +460,61 @@ describe("statusline editor interactions", () => {
 });
 
 describe("statusline editor live preview and layout", () => {
-  it("updates the preview from the draft after toggling a row", () => {
-    const { editor, done } = makeEditor();
-    editor.handleInput(SPACE);
-    editor.handleInput(ENTER);
-    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+  it("renders the preview as the bottom preview line without a Preview label", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({ segments: ["model-with-reasoning", "current-dir"] }),
+    });
+    const lines = renderLines(editor, 200);
 
-    expect(saved?.segments).toEqual(["current-dir"]);
+    expect(lines).not.toContain("Preview:");
+    expect(lines.at(-3)).toBe("");
+    expect(lines.at(-2)).toBe("/Users/test/project");
+    expect(lines.at(-1)).toBe(
+      "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
+    );
+  });
+
+  it("updates the preview line after toggling a segment", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({ segments: ["model-with-reasoning", "current-dir"] }),
+    });
+    const before = renderLines(editor, 200).at(-2);
+    expect(before).toBe("/Users/test/project");
+    editor.handleInput(DOWN);
+    editor.handleInput(SPACE); // toggle off current-dir
+    const after = renderLines(editor, 200).at(-2);
+    expect(after).toBe("");
+  });
+
+  it("updates the preview line after reordering enabled segments", () => {
+    const editor = createStatuslineEditor({
+      config: makeConfig({ segments: ["current-dir", "run-state"] }),
+      discoveredStatuses: [],
+      previewInput: { ...makePreviewInput(), runState: "busy" },
+      theme: IDENTITY_THEME,
+      done: vi.fn(),
+      requestRender: vi.fn(),
+    }) as EditorComponent;
+    expect(editor.render(200).at(-2)).toBe(
+      "/Users/test/project · busy",
+    );
+    editor.handleInput(DOWN);
+    editor.handleInput(LEFT);
+    expect(editor.render(200).at(-2)).toBe(
+      "busy · /Users/test/project",
+    );
+  });
+
+  it("keeps the preview line stable when the user only edits the search query", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({ segments: ["current-dir", "run-state"] }),
+    });
+    const initial = renderLines(editor, 200).at(-2);
+    expect(initial).toBe("/Users/test/project · idle");
+    editor.handleInput("c");
+    editor.handleInput("u");
+    editor.handleInput("r");
+    expect(renderLines(editor, 200).at(-2)).toBe(initial);
   });
 
   it("updates filter state when toggling the policy row", () => {
@@ -455,7 +538,7 @@ describe("statusline editor live preview and layout", () => {
     const target = lines.find((line) => line.includes("Model + Reasoning"));
 
     expect(target).toBe(
-      "> [x] Model + Reasoning (1)     Show the current model name and reasoning level. Hidden when no model is available.",
+      "> [x] Model + Reasoning (1)     Current model name with reasoning level",
     );
   });
 

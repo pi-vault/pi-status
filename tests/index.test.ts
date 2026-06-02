@@ -67,8 +67,8 @@ function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext 
 
 describe("config", () => {
   it("normalizes segments and filter", () => {
-    expect(normalizeSegments(["model", "model", "unknown", 1, "current-dir", "git-branch", "project-root"]))
-      .toEqual(["model", "current-dir", "git-branch", "project-root"]);
+    expect(normalizeSegments(["model", "model", "unknown", 1, "current-dir", "git-branch", "project-name"]))
+      .toEqual(["model", "current-dir", "git-branch", "project-name"]);
 
     expect(normalizeStatusFilter(undefined)).toEqual({ mode: "all", hidden: [] });
     expect(normalizeStatusFilter({ mode: "all", hidden: ["a", "a", "", 1] })).toEqual({
@@ -212,7 +212,7 @@ describe("render", () => {
     expect(findProjectRootLabel(tmpdir())).toBeNull();
   });
 
-  it("renders project-root segment when available", () => {
+  it("renders project-name segment when available", () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-status-root-"));
     const root = join(dir, "repo2");
     const nested = join(root, "x/y");
@@ -225,7 +225,7 @@ describe("render", () => {
         cwd: nested,
         thinkingLevel: "medium",
         runState: "idle",
-        segments: ["project-root"],
+        segments: ["project-name"],
       }),
       { fg: (_c, t) => t },
       200,
@@ -379,7 +379,7 @@ describe("extension wiring", () => {
         projectSettings,
         JSON.stringify({
           statusLine: {
-            segments: ["project-root"],
+            segments: ["project-name"],
             filter: { mode: "all", hidden: [] },
           },
         }),
