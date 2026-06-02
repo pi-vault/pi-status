@@ -5,13 +5,13 @@ import {
   visibleWidth,
   type Component,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig } from "./config.ts";
+import type { PiStatusConfig } from "../config.ts";
 import {
   buildFooterLine,
   type FooterRenderInput,
   type StatusLineSegmentId,
-  type ThemeLike,
-} from "./render.ts";
+} from "../render.ts";
+import type { StatuslineMenuTheme } from "./statusline-theme.ts";
 
 type SegmentMetadata = {
   id: StatusLineSegmentId;
@@ -177,7 +177,7 @@ function renderRowLine(
     description: string;
   },
   width: number,
-  theme: ThemeLike,
+  theme: StatuslineMenuTheme,
 ): string {
   if (width < 1) return "";
 
@@ -206,7 +206,7 @@ function renderRowLine(
       width - prefixWidth - LABEL_COLUMN_WIDTH - LAYOUT_GAP.length,
     );
     const desc = truncateToWidth(row.description, descWidth);
-    return `${prefix}${labelPadded}${LAYOUT_GAP}${theme.fg("dim", desc)}`;
+    return `${prefix}${labelPadded}${LAYOUT_GAP}${theme.dim(desc)}`;
   }
 
   const separator = " - ";
@@ -220,33 +220,37 @@ function renderRowLine(
   const fallbackBase = `${prefix}${label}${separator}`;
   const fallbackDescWidth = Math.max(0, width - visibleWidth(fallbackBase));
   const desc = truncateToWidth(row.description, fallbackDescWidth);
-  return `${fallbackBase}${theme.fg("dim", desc)}`;
+  return `${fallbackBase}${theme.dim(desc)}`;
 }
 
 function renderSectionHeader(
   text: string,
   width: number,
-  theme: ThemeLike,
+  theme: StatuslineMenuTheme,
 ): string {
-  return truncateToWidth(theme.fg("dim", text), width);
+  return truncateToWidth(theme.dim(text), width);
 }
 
-function renderDivider(width: number, theme: ThemeLike): string {
+function renderDivider(width: number, theme: StatuslineMenuTheme): string {
   return truncateToWidth(
-    theme.fg("dim", "─".repeat(Math.max(1, width))),
+    theme.fg("borderMuted", "─".repeat(Math.max(1, width))),
     width,
   );
 }
 
-function renderHint(text: string, width: number, theme: ThemeLike): string {
-  return truncateToWidth(theme.fg("dim", text), width);
+function renderHint(
+  text: string,
+  width: number,
+  theme: StatuslineMenuTheme,
+): string {
+  return truncateToWidth(theme.dim(text), width);
 }
 
 export function createStatuslineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
   previewInput: Omit<FooterRenderInput, "segments" | "filter">;
-  theme: ThemeLike;
+  theme: StatuslineMenuTheme;
   done: (result: PiStatusConfig | null) => void;
   requestRender: () => void;
 }): Component {
@@ -492,15 +496,14 @@ export function createStatuslineEditor(options: {
 
       const lines: string[] = [];
       lines.push(
-        truncateToWidth(options.theme.fg("accent", SHELL_TITLE), width),
+        truncateToWidth(
+          options.theme.fg("accent", options.theme.bold(SHELL_TITLE)),
+          width,
+        ),
       );
-      lines.push(
-        truncateToWidth(options.theme.fg("dim", SHELL_SUBTITLE), width),
-      );
+      lines.push(truncateToWidth(options.theme.dim(SHELL_SUBTITLE), width));
       lines.push(truncateToWidth("", width));
-      lines.push(
-        truncateToWidth(options.theme.fg("dim", SHELL_PLACEHOLDER), width),
-      );
+      lines.push(truncateToWidth(options.theme.dim(SHELL_PLACEHOLDER), width));
       lines.push(truncateToWidth(`> ${query}`, width));
 
       for (const renderRow of renderRows) {
@@ -576,7 +579,7 @@ export function createStatuslineEditor(options: {
       lines.push(truncateToWidth(preview, width));
       lines.push(
         truncateToWidth(
-          options.theme.fg("dim", query ? HELP_SEARCHING : HELP_BASE),
+          options.theme.dim(query ? HELP_SEARCHING : HELP_BASE),
           width,
         ),
       );

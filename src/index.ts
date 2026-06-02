@@ -14,7 +14,8 @@ import {
   type PiStatusConfig,
 } from "./config.ts";
 import { buildFooterLine } from "./render.ts";
-import { createStatuslineEditor } from "./statusline-ui.ts";
+import { createStatuslineEditor } from "./ui/statusline-editor.ts";
+import { fromPiTheme, noTheme, type StatuslineMenuTheme } from "./ui/statusline-theme.ts";
 
 type FooterComponent = {
   render: (width: number) => string[];
@@ -43,6 +44,17 @@ const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
   invalidate(): void {},
   dispose(): void {},
 });
+
+// `ctx.ui.custom(...)` is expected to hand us a live Pi theme, but the
+// runtime contract is loose and the theme may be missing in some test or
+// boot contexts. We only adapt it when both `fg` and `bold` are callable so
+// the editor always gets a well-formed `StatuslineMenuTheme` and never has
+// to defend against partial themes at render time.
+function isLiveTheme(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { fg?: unknown; bold?: unknown };
+  return typeof candidate.fg === "function" && typeof candidate.bold === "function";
+}
 
 function aggregateBranchTotals(ctx: ExtensionContext): {
   input: number;
@@ -203,6 +215,9 @@ export default function createExtension(pi: ExtensionAPI): void {
         result = await ctx.ui.custom<PiStatusConfig | null>(
           (tui, theme, _keys, done) => {
             const activeCtx = currentCtx ?? ctx;
+            const menuTheme: StatuslineMenuTheme = isLiveTheme(theme)
+              ? fromPiTheme(theme)
+              : noTheme;
             return createStatuslineEditor({
               config: runtimeConfig,
               discoveredStatuses: discovered,
@@ -222,9 +237,7 @@ export default function createExtension(pi: ExtensionAPI): void {
                 usageState,
                 extensionStatuses: lastExtensionStatuses,
               },
-              theme: theme as unknown as {
-                fg: (color: string, text: string) => string;
-              },
+              theme: menuTheme,
               done,
               requestRender: () => tui.requestRender?.(),
             });
