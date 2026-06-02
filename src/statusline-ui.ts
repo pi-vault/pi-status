@@ -179,6 +179,8 @@ function renderRowLine(
   width: number,
   theme: ThemeLike,
 ): string {
+  if (width < 1) return "";
+
   const prefix = `${row.cursor} ${row.checkbox} `;
   const prefixWidth = visibleWidth(prefix);
   const alignedMinWidth =
@@ -186,6 +188,15 @@ function renderRowLine(
     LABEL_COLUMN_WIDTH +
     LAYOUT_GAP.length +
     MIN_DESCRIPTION_WIDTH;
+
+  if (width < prefixWidth) {
+    // Not enough room for the full prefix. truncateToWidth uses an ellipsis
+    // strategy that does not preserve the first character at very small
+    // widths, so handle these cases explicitly to keep the cursor marker
+    // identifiable for selected rows.
+    if (row.cursor === ">") return ">".padEnd(width, " ");
+    return " ".repeat(width);
+  }
 
   if (width >= alignedMinWidth) {
     const labelFitted = truncateToWidth(row.labelWithOrder, LABEL_COLUMN_WIDTH);
@@ -200,10 +211,6 @@ function renderRowLine(
 
   const separator = " - ";
   const remainingWidth = width - prefixWidth;
-  if (remainingWidth < 1) {
-    return truncateToWidth(prefix, width);
-  }
-
   if (remainingWidth <= separator.length + 1) {
     return truncateToWidth(`${prefix}${row.labelWithOrder}`, width);
   }
@@ -480,7 +487,7 @@ export function createStatuslineEditor(options: {
           filter: cfg.filter,
         },
         options.theme,
-        Math.max(10, width - 2),
+        width,
       );
 
       const lines: string[] = [];

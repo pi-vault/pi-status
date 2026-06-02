@@ -399,4 +399,191 @@ describe("extension wiring", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { pi: { extensions: string[] } };
     expect(pkg.pi.extensions).toEqual(["./src/index.ts", "node_modules/@pi-vault/pi-usage/src/index.ts"]);
   });
+
+  it("invokes /statusline via ctx.ui.custom without overlay mode", async () => {
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn(async (..._args: unknown[]) => null);
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    expect(commandCall).toBeDefined();
+    const handler = (commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> })
+      .handler;
+
+    await handler("", ctx);
+
+    expect(customMock).toHaveBeenCalledTimes(1);
+    const callArgs = customMock.mock.calls[0] as unknown[];
+    expect(typeof callArgs[0]).toBe("function");
+    expect(callArgs[1]).toBeUndefined();
+  });
+
+  it("persists /statusline result to settings when user saves", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-inline-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const globalSettings = join(globalHome, ".pi/agent/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    writeFileSync(join(project, ".pi/settings.json"), JSON.stringify({ y: 1 }), "utf8");
+
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn();
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+
+    try {
+      const pi = {
+        events,
+        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+        },
+        registerCommand,
+        getThinkingLevel: () => "medium",
+      } as unknown as ExtensionAPI;
+
+      createExtension(pi);
+
+      const ctx = createContext({
+        cwd: project,
+        ui: { ...createContext().ui, custom: customMock },
+      });
+
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+      const commandCall = registerCommand.mock.calls.find(
+        ([name]) => name === "statusline",
+      );
+      const handler = (commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> })
+        .handler;
+
+      let savedResult: unknown;
+      customMock.mockImplementationOnce(
+        async (factory: (...args: unknown[]) => unknown) => {
+          const component = (
+            factory as unknown as (
+              ...args: unknown[]
+            ) => { handleInput: (data: string) => void }
+          )(
+            { requestRender: () => {} },
+            { fg: (_c: string, t: string) => t },
+            {},
+            (result: unknown) => {
+              savedResult = result;
+            },
+          );
+          component.handleInput("\r");
+          return savedResult;
+        },
+      );
+
+      await handler("", ctx);
+
+      const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
+      expect(saved.statusLine).toBeDefined();
+      expect(saved.statusLine.segments).toEqual([
+        "model-with-reasoning",
+        "current-dir",
+      ]);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
+
+  it("does not persist /statusline result when user cancels", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-status-inline-cancel-"));
+    const globalHome = join(dir, "home");
+    const project = join(dir, "project");
+    const projectSettings = join(project, ".pi/settings.json");
+
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+    const beforeContent = JSON.stringify({ y: 1 });
+    writeFileSync(projectSettings, beforeContent, "utf8");
+
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn();
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = globalHome;
+
+    try {
+      const pi = {
+        events,
+        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+        },
+        registerCommand,
+        getThinkingLevel: () => "medium",
+      } as unknown as ExtensionAPI;
+
+      createExtension(pi);
+
+      const ctx = createContext({
+        cwd: project,
+        ui: { ...createContext().ui, custom: customMock },
+      });
+
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+      const commandCall = registerCommand.mock.calls.find(
+        ([name]) => name === "statusline",
+      );
+      const handler = (commandCall?.[1] as { handler: (args: string, ctx: ExtensionContext) => Promise<void> })
+        .handler;
+
+      customMock.mockImplementationOnce(
+        async (factory: (...args: unknown[]) => unknown) => {
+          const component = (
+            factory as unknown as (
+              ...args: unknown[]
+            ) => { handleInput: (data: string) => void }
+          )(
+            { requestRender: () => {} },
+            { fg: (_c: string, t: string) => t },
+            {},
+            () => {},
+          );
+          component.handleInput("\x1b");
+          return null;
+        },
+      );
+
+      await handler("", ctx);
+
+      const afterContent = readFileSync(projectSettings, "utf8");
+      expect(afterContent).toBe(beforeContent);
+    } finally {
+      process.env.HOME = oldHome;
+    }
+  });
 });
