@@ -34,6 +34,16 @@ type FooterFactory = (
   footerData: FooterDataLike,
 ) => FooterComponent;
 
+// Used only to suppress the live footer while a custom UI (e.g. /statusline)
+// is open. Renders no lines and is a no-op otherwise.
+const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
+  render(_width: number): string[] {
+    return [];
+  },
+  invalidate(): void {},
+  dispose(): void {},
+});
+
 function aggregateBranchTotals(ctx: ExtensionContext): {
   input: number;
   output: number;
@@ -143,6 +153,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     ctx.ui.setFooter(factory as never);
   }
 
+  function installEmptyFooter(ctx: ExtensionContext): void {
+    if (!ctx.hasUI) return;
+    ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
+  }
+
   function refresh(ctx: ExtensionContext): void {
     currentCtx = ctx;
     refreshRuntimeConfig(ctx.cwd);
@@ -182,36 +197,42 @@ export default function createExtension(pi: ExtensionAPI): void {
         a.localeCompare(b),
       );
 
-      const result = await ctx.ui.custom<PiStatusConfig | null>(
-        (tui, theme, _keys, done) => {
-          const activeCtx = currentCtx ?? ctx;
-          return createStatuslineEditor({
-            config: runtimeConfig,
-            discoveredStatuses: discovered,
-            previewInput: {
-              model: activeCtx.model,
-              cwd: activeCtx.cwd,
-              thinkingLevel: String(pi.getThinkingLevel()),
-              gitBranch: lastGitBranch,
-              runState: !activeCtx.isIdle()
-                ? "busy"
-                : activeCtx.hasPendingMessages()
-                  ? "queued"
-                  : "idle",
-              contextUsage: activeCtx.getContextUsage(),
-              branchTotals: aggregateBranchTotals(activeCtx),
-              sessionId: activeCtx.sessionManager.getSessionId(),
-              usageState,
-              extensionStatuses: lastExtensionStatuses,
-            },
-            theme: theme as unknown as {
-              fg: (color: string, text: string) => string;
-            },
-            done,
-            requestRender: () => tui.requestRender?.(),
-          });
-        },
-      );
+      let result: PiStatusConfig | null = null;
+      try {
+        installEmptyFooter(ctx);
+        result = await ctx.ui.custom<PiStatusConfig | null>(
+          (tui, theme, _keys, done) => {
+            const activeCtx = currentCtx ?? ctx;
+            return createStatuslineEditor({
+              config: runtimeConfig,
+              discoveredStatuses: discovered,
+              previewInput: {
+                model: activeCtx.model,
+                cwd: activeCtx.cwd,
+                thinkingLevel: String(pi.getThinkingLevel()),
+                gitBranch: lastGitBranch,
+                runState: !activeCtx.isIdle()
+                  ? "busy"
+                  : activeCtx.hasPendingMessages()
+                    ? "queued"
+                    : "idle",
+                contextUsage: activeCtx.getContextUsage(),
+                branchTotals: aggregateBranchTotals(activeCtx),
+                sessionId: activeCtx.sessionManager.getSessionId(),
+                usageState,
+                extensionStatuses: lastExtensionStatuses,
+              },
+              theme: theme as unknown as {
+                fg: (color: string, text: string) => string;
+              },
+              done,
+              requestRender: () => tui.requestRender?.(),
+            });
+          },
+        );
+      } finally {
+        installFooter(ctx);
+      }
 
       if (!result) return;
 
