@@ -547,16 +547,184 @@ describe("statusline editor live preview and layout", () => {
     const lines = renderLines(editor, 40);
     const target = lines.find((line) => line.includes("Model + Reasoning"));
 
-    expect(target).toMatch(/^> \[x\] Model \+ Reasoning \(1\) - /);
+    expect(target).toBe("> [x] Model + Reasoning (1) - Current...");
   });
 
   it("never renders lines wider than the requested width", () => {
-    for (const width of [40, 80, 200]) {
+    for (const width of [1, 2, 3, 5, 10, 40, 80, 200]) {
       const { editor } = makeEditor({ discovered: ["very-long-status-name"] });
       const lines = renderLines(editor, width);
       for (const line of lines) {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
       }
     }
+  });
+});
+
+describe("statusline editor width hardening", () => {
+  it("keeps the selected row identifiable at width 1", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 1);
+    const rows = rowLines(lines);
+    const selected = rows.find((line) => line === ">");
+    expect(selected).toBe(">");
+  });
+
+  it("keeps the selected row identifiable at width 2", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 2);
+    const rows = rowLines(lines);
+    const selected = rows.find((line) => line === "> ");
+    expect(selected).toBe("> ");
+  });
+
+  it("keeps the selected row identifiable at width 3", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 3);
+    const rows = rowLines(lines);
+    const selected = rows.find((line) => line === ">  ");
+    expect(selected).toBe(">  ");
+  });
+
+  it("renders unselected rows as spaces at width 1", () => {
+    const { editor } = makeEditor();
+    editor.handleInput(DOWN);
+    const lines = renderLines(editor, 1);
+    const rows = rowLines(lines);
+    const selected = rows.find((line) => line === " ");
+    expect(selected).toBe(" ");
+  });
+
+  it("keeps aligned wide-width row output exact and deterministic", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 200);
+    const target = lines.find((line) => line.includes("Model + Reasoning"));
+    expect(target).toBe(
+      "> [x] Model + Reasoning (1)     Current model name with reasoning level",
+    );
+  });
+
+  it("keeps narrow-width fallback row output exact and deterministic", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 30);
+    const target = lines.find((line) => line.includes("Model + Reasoning"));
+    expect(target).toBe("> [x] Model + Reasoning... - .");
+  });
+
+  it("renders the preview with the full requested width without the extra two-column loss", () => {
+    const longCwd =
+      "/Users/test/project/very/long/path/that/exceeds/fifty/characters/xx";
+    const editor = createStatuslineEditor({
+      config: makeConfig({ segments: ["current-dir"] }),
+      discoveredStatuses: [],
+      previewInput: { ...makePreviewInput(), cwd: longCwd },
+      theme: IDENTITY_THEME,
+      done: vi.fn(),
+      requestRender: vi.fn(),
+    }) as EditorComponent;
+
+    const width = 50;
+    const lines = renderLines(editor, width);
+    const preview = lines.at(-2) ?? "";
+    expect(visibleWidth(preview)).toBe(width);
+  });
+
+  it("truncates the default help line within width and keeps it readable", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 30);
+    const help = lines.at(-1) ?? "";
+    expect(visibleWidth(help)).toBeLessThanOrEqual(30);
+    expect(help).toBe("Toggle: Space  •  Reorder: ...");
+  });
+
+  it("truncates the searching help line within width and keeps it readable", () => {
+    const { editor } = makeEditor();
+    editor.handleInput("m");
+    const lines = renderLines(editor, 30);
+    const help = lines.at(-1) ?? "";
+    expect(visibleWidth(help)).toBeLessThanOrEqual(30);
+    expect(help).toBe("Toggle: Space  •  Reorder: ...");
+  });
+
+  it("keeps default and searching help lines distinct at widths that show full copy", () => {
+    for (const width of [40, 80, 120, 200]) {
+      const baseEditor = makeEditor();
+      const baseHelp =
+        baseEditor.editor.render(width).map(stripAnsi).at(-1) ?? "";
+
+      const searching = makeEditor();
+      searching.editor.handleInput("m");
+      const searchHelp =
+        searching.editor.render(width).map(stripAnsi).at(-1) ?? "";
+
+      expect(baseHelp).not.toBe(searchHelp);
+      expect(baseHelp.startsWith("Toggle: Space")).toBe(true);
+      expect(searchHelp.startsWith("Toggle: Space")).toBe(true);
+    }
+  });
+
+  it("truncates the subtitle, section, and hint lines within width", () => {
+    for (const width of [1, 5, 10, 30, 80, 200]) {
+      const { editor } = makeEditor({ discovered: ["alpha-status"] });
+      const lines = renderLines(editor, width);
+      for (const line of lines) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
+  it("keeps all rendered lines within width across representative widths", () => {
+    for (const width of [1, 2, 3, 5, 10, 20, 30, 40, 60, 80, 120, 200]) {
+      const { editor } = makeEditor({
+        discovered: ["alpha-status", "beta-status", "gamma-status"],
+      });
+      const lines = renderLines(editor, width);
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+});
+
+describe("statusline editor discovered-status filter persistence", () => {
+  it("saves filter: { mode: 'all', hidden: [...] } when hiding one discovered status in all mode", () => {
+    const { editor, done } = makeEditor({
+      config: makeConfig({
+        segments: ["model-with-reasoning", "current-dir"],
+        filter: { mode: "all", hidden: [] },
+      }),
+      discovered: ["alpha-status", "beta-status"],
+    });
+
+    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+    editor.handleInput(SPACE);
+    editor.handleInput(ENTER);
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+
+    expect(saved?.filter).toEqual({
+      mode: "all",
+      hidden: ["alpha-status"],
+    });
+  });
+
+  it("saves filter: { mode: 'only', shown: [...] } when showing one discovered status in only mode", () => {
+    const { editor, done } = makeEditor({
+      config: makeConfig({
+        segments: ["model-with-reasoning", "current-dir"],
+        filter: { mode: "only", shown: [] },
+      }),
+      discovered: ["alpha-status", "beta-status"],
+    });
+
+    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+    editor.handleInput(SPACE);
+    editor.handleInput(ENTER);
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+
+    expect(saved?.filter).toEqual({
+      mode: "only",
+      shown: ["alpha-status"],
+    });
   });
 });
