@@ -13,91 +13,117 @@ import {
   type ThemeLike,
 } from "./render.ts";
 
-const SEGMENT_METADATA: Record<
-  StatusLineSegmentId,
-  { label: string; description: string }
-> = {
-  model: {
+type SegmentMetadata = {
+  id: StatusLineSegmentId;
+  label: string;
+  description: string;
+};
+
+const SEGMENT_ORDER: readonly SegmentMetadata[] = [
+  {
+    id: "model",
     label: "Model",
     description:
       "Show the current model name. Hidden when no model is available.",
   },
-  "model-with-reasoning": {
+  {
+    id: "model-with-reasoning",
     label: "Model + Reasoning",
     description:
       "Show the current model name and reasoning level. Hidden when no model is available.",
   },
-  "project-root": {
+  {
+    id: "project-root",
     label: "Project Root",
     description:
       "Show the nearest project root folder name. Hidden when no project root is detected.",
   },
-  "current-dir": {
+  {
+    id: "current-dir",
     label: "Current Dir",
     description: "Show the current working directory.",
   },
-  "git-branch": {
+  {
+    id: "git-branch",
     label: "Git Branch",
     description: "Show the current Git branch. Hidden when unavailable.",
   },
-  "run-state": {
+  {
+    id: "run-state",
     label: "Run State",
     description: "Show whether Pi is idle, queued, or busy.",
   },
-  "context-remaining": {
+  {
+    id: "context-remaining",
     label: "Context Remaining",
     description:
       "Show remaining context tokens. Hidden when context usage is unavailable.",
   },
-  "context-used": {
+  {
+    id: "context-used",
     label: "Context Used",
     description:
       "Show percent of context already used. Hidden when context usage is unavailable.",
   },
-  "context-window-size": {
+  {
+    id: "context-window-size",
     label: "Context Window",
     description:
       "Show the total context window size. Hidden when context usage is unavailable.",
   },
-  "used-tokens": {
+  {
+    id: "used-tokens",
     label: "Used Tokens",
     description:
       "Show total assistant tokens used in this branch. Hidden when unavailable.",
   },
-  "total-input-tokens": {
+  {
+    id: "total-input-tokens",
     label: "Input Tokens",
     description:
       "Show total assistant input tokens in this branch. Hidden when unavailable.",
   },
-  "total-output-tokens": {
+  {
+    id: "total-output-tokens",
     label: "Output Tokens",
     description:
       "Show total assistant output tokens in this branch. Hidden when unavailable.",
   },
-  "session-id": {
+  {
+    id: "session-id",
     label: "Session ID",
     description: "Show the short session ID. Hidden when unavailable.",
   },
-  "five-hour-limit": {
+  {
+    id: "five-hour-limit",
     label: "5h Limit",
     description: "Show remaining 5-hour Codex quota. Hidden when unavailable.",
   },
-  "weekly-limit": {
+  {
+    id: "weekly-limit",
     label: "Weekly Limit",
     description: "Show remaining weekly Codex quota. Hidden when unavailable.",
   },
-  "extension-statuses": {
+  {
+    id: "extension-statuses",
     label: "Extension Statuses",
     description:
       "Show visible extension status values. Hidden when none are visible.",
   },
-};
+] as const;
+
+const SEGMENT_METADATA = new Map(
+  SEGMENT_ORDER.map((segment) => [segment.id, segment]),
+);
 
 const STATUS_ROW_DESCRIPTION =
   "Show or hide this extension status when extension-statuses is enabled.";
 const POLICY_ROW_LABEL = "New extension statuses";
 const POLICY_ROW_DESCRIPTION =
   "Whether newly discovered extension statuses are shown by default.";
+const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses discovered yet.";
+const SEGMENT_SECTION_TITLE = "Status line items";
+const STATUS_SECTION_TITLE = "Extension statuses";
 
 const LABEL_COLUMN_WIDTH = 24;
 const LAYOUT_GAP = "  ";
@@ -111,10 +137,19 @@ const HELP_BASE =
 const HELP_SEARCHING =
   "Toggle: Space  •  Reorder: disabled while search is active  •  Save: Enter  •  Cancel: Esc";
 
-type SegmentRow = { type: "segment"; id: StatusLineSegmentId };
-type StatusRow = { type: "status"; key: string; label: string };
-type NewRow = { type: "new"; label: string };
-type Row = SegmentRow | StatusRow | NewRow;
+type SegmentInteractiveRow = { type: "segment"; id: StatusLineSegmentId };
+type StatusInteractiveRow = { type: "status"; key: string };
+type PolicyInteractiveRow = { type: "policy" };
+type InteractiveRow =
+  | SegmentInteractiveRow
+  | StatusInteractiveRow
+  | PolicyInteractiveRow;
+
+type RenderRow =
+  | { type: "header"; text: string }
+  | { type: "divider" }
+  | { type: "hint"; text: string }
+  | { type: "interactive"; row: InteractiveRow; interactiveIndex: number };
 
 export function mapStatusDraftToFilter(input: {
   discoveredKeys: string[];
@@ -189,6 +224,18 @@ function renderRowLine(
   return `${fallbackBase}${theme.fg("dim", desc)}`;
 }
 
+function renderSectionHeader(text: string, width: number, theme: ThemeLike): string {
+  return truncateToWidth(theme.fg("dim", text), width);
+}
+
+function renderDivider(width: number, theme: ThemeLike): string {
+  return truncateToWidth(theme.fg("dim", "─".repeat(Math.max(1, width))), width);
+}
+
+function renderHint(text: string, width: number, theme: ThemeLike): string {
+  return truncateToWidth(theme.fg("dim", text), width);
+}
+
 export function createStatuslineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
@@ -201,11 +248,6 @@ export function createStatuslineEditor(options: {
     a.localeCompare(b),
   );
   let enabledSegments = [...options.config.segments];
-  const allSegments = Object.entries(SEGMENT_METADATA).map(([id, meta]) => ({
-    type: "segment",
-    id: id as StatusLineSegmentId,
-    label: meta.label,
-  })) as Array<SegmentRow & { label: string }>;
 
   const shownNew = options.config.filter.mode === "all";
   let newPolicyShown = shownNew;
@@ -221,19 +263,96 @@ export function createStatuslineEditor(options: {
   let selected = 0;
   let query = "";
 
-  function rows(): Row[] {
-    const segRows = allSegments
-      .filter((s) => includesFuzzy(s.label, query))
-      .map(({ id, label }) => ({ type: "segment", id, label }) as SegmentRow);
-    const statusRows = orderedStatuses
-      .filter((key) => includesFuzzy(key, query))
-      .map((key) => ({ type: "status", key, label: key }) as StatusRow);
-    const newRow = [{ type: "new", label: POLICY_ROW_LABEL } as NewRow];
-    return [...segRows, ...statusRows, ...newRow];
+  function isEnabledSegment(id: StatusLineSegmentId): boolean {
+    return enabledSegments.includes(id);
+  }
+
+  function getInteractiveRows(): InteractiveRow[] {
+    const enabled = enabledSegments.map((id) => ({
+      type: "segment",
+      id,
+    })) as SegmentInteractiveRow[];
+
+    const disabled = SEGMENT_ORDER.filter((segment) => !isEnabledSegment(segment.id))
+      .map((segment) => ({
+        type: "segment",
+        id: segment.id,
+      })) as SegmentInteractiveRow[];
+
+    const policy: PolicyInteractiveRow = { type: "policy" };
+    const statuses = orderedStatuses.map((key) => ({
+      type: "status",
+      key,
+    })) as StatusInteractiveRow[];
+
+    return [...enabled, ...disabled, policy, ...statuses];
+  }
+
+  function rowMatchesQuery(row: InteractiveRow): boolean {
+    if (!query) return true;
+
+    if (row.type === "segment") {
+      const meta = SEGMENT_METADATA.get(row.id);
+      if (!meta) return false;
+      return includesFuzzy(`${meta.label} ${meta.description}`, query);
+    }
+
+    if (row.type === "policy") {
+      return includesFuzzy(`${POLICY_ROW_LABEL} ${POLICY_ROW_DESCRIPTION}`, query);
+    }
+
+    return includesFuzzy(`${row.key} ${STATUS_ROW_DESCRIPTION}`, query);
+  }
+
+  function getFilteredInteractiveRows(): InteractiveRow[] {
+    return getInteractiveRows().filter((row) => rowMatchesQuery(row));
+  }
+
+  function getRenderRows(): RenderRow[] {
+    const filtered = getFilteredInteractiveRows();
+
+    if (query) {
+      return filtered.map((row, interactiveIndex) => ({
+        type: "interactive",
+        row,
+        interactiveIndex,
+      }));
+    }
+
+    const segmentRows = filtered.filter(
+      (row): row is SegmentInteractiveRow => row.type === "segment",
+    );
+    const extensionRows = filtered.filter(
+      (row): row is StatusInteractiveRow | PolicyInteractiveRow =>
+        row.type === "status" || row.type === "policy",
+    );
+
+    const renderRows: RenderRow[] = [];
+    let interactiveIndex = 0;
+
+    renderRows.push({ type: "header", text: SEGMENT_SECTION_TITLE });
+    for (const row of segmentRows) {
+      renderRows.push({ type: "interactive", row, interactiveIndex });
+      interactiveIndex++;
+    }
+
+    renderRows.push({ type: "divider" });
+    renderRows.push({ type: "header", text: STATUS_SECTION_TITLE });
+
+    for (const row of extensionRows) {
+      renderRows.push({ type: "interactive", row, interactiveIndex });
+      interactiveIndex++;
+    }
+
+    if (orderedStatuses.length === 0) {
+      renderRows.push({ type: "hint", text: EMPTY_EXTENSION_STATUSES_HINT });
+    }
+
+    return renderRows;
   }
 
   function clampSelection(): void {
-    const list = rows();
+    const list = getFilteredInteractiveRows();
     if (list.length === 0) {
       selected = 0;
       return;
@@ -242,11 +361,7 @@ export function createStatuslineEditor(options: {
     if (selected >= list.length) selected = list.length - 1;
   }
 
-  function isEnabledSegment(id: StatusLineSegmentId): boolean {
-    return enabledSegments.includes(id);
-  }
-
-  function toggleRow(row: Row): void {
+  function toggleRow(row: InteractiveRow): void {
     if (row.type === "segment") {
       if (isEnabledSegment(row.id)) {
         enabledSegments = enabledSegments.filter((x) => x !== row.id);
@@ -265,8 +380,9 @@ export function createStatuslineEditor(options: {
     newPolicyShown = !newPolicyShown;
   }
 
-  function moveSegment(delta: -1 | 1, row: SegmentRow): void {
+  function moveSegment(delta: -1 | 1, row: InteractiveRow): void {
     if (query) return;
+    if (row.type !== "segment") return;
     const idx = enabledSegments.indexOf(row.id);
     if (idx < 0) return;
     const next = idx + delta;
@@ -292,8 +408,8 @@ export function createStatuslineEditor(options: {
     invalidate(): void {},
 
     handleInput(data: string): void {
-      const list = rows();
       clampSelection();
+      const list = getFilteredInteractiveRows();
       const current = list[selected];
 
       if (matchesKey(data, Key.escape)) {
@@ -318,16 +434,19 @@ export function createStatuslineEditor(options: {
       }
       if (matchesKey(data, Key.space) && current) {
         toggleRow(current);
+        clampSelection();
         options.requestRender();
         return;
       }
-      if (matchesKey(data, Key.left) && current?.type === "segment") {
+      if (matchesKey(data, Key.left) && current) {
         moveSegment(-1, current);
+        clampSelection();
         options.requestRender();
         return;
       }
-      if (matchesKey(data, Key.right) && current?.type === "segment") {
+      if (matchesKey(data, Key.right) && current) {
         moveSegment(1, current);
+        clampSelection();
         options.requestRender();
         return;
       }
@@ -340,7 +459,7 @@ export function createStatuslineEditor(options: {
         return;
       }
 
-      if (/^[\x20-\x7E]$/.test(data)) {
+      if (/^[\x21-\x7E]$/.test(data)) {
         query += data;
         clampSelection();
         options.requestRender();
@@ -348,8 +467,8 @@ export function createStatuslineEditor(options: {
     },
 
     render(width: number): string[] {
-      const list = rows();
       clampSelection();
+      const renderRows = getRenderRows();
       const cfg = toConfig();
       const preview = buildFooterLine(
         {
@@ -374,15 +493,29 @@ export function createStatuslineEditor(options: {
       );
       lines.push(truncateToWidth(`> ${query}`, width));
 
-      for (let i = 0; i < list.length; i++) {
-        const row = list[i];
-        const cursor = i === selected ? ">" : " ";
+      for (const renderRow of renderRows) {
+        if (renderRow.type === "header") {
+          lines.push(renderSectionHeader(renderRow.text, width, options.theme));
+          continue;
+        }
+        if (renderRow.type === "divider") {
+          lines.push(renderDivider(width, options.theme));
+          continue;
+        }
+        if (renderRow.type === "hint") {
+          lines.push(renderHint(renderRow.text, width, options.theme));
+          continue;
+        }
+
+        const row = renderRow.row;
+        const cursor = renderRow.interactiveIndex === selected ? ">" : " ";
         if (row.type === "segment") {
           const enabled = isEnabledSegment(row.id) ? "[x]" : "[ ]";
           const order = isEnabledSegment(row.id)
             ? ` (${enabledSegments.indexOf(row.id) + 1})`
             : "";
-          const meta = SEGMENT_METADATA[row.id];
+          const meta = SEGMENT_METADATA.get(row.id);
+          if (!meta) continue;
           const labelWithOrder = `${meta.label}${order}`;
           lines.push(
             renderRowLine(
@@ -405,7 +538,7 @@ export function createStatuslineEditor(options: {
               {
                 cursor,
                 checkbox: enabled,
-                labelWithOrder: row.label,
+                labelWithOrder: row.key,
                 description: STATUS_ROW_DESCRIPTION,
               },
               width,

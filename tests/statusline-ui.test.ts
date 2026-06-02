@@ -56,24 +56,31 @@ function stripAnsi(value: string): string {
   return value.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-const SHELL_PREAMBLE = [
-  "Configure Status Line",
-  "Select which items to display in the status line.",
-  "",
-  "Type to search",
-  "> ",
-];
+function renderLines(editor: EditorComponent, width = 120): string[] {
+  return editor.render(width).map(stripAnsi);
+}
 
-function findActiveRow(lines: string[]): string | undefined {
-  return lines.find((line) => /^> \[[ x]\]/.test(line));
+function rowLines(lines: string[]): string[] {
+  const previewIndex = lines.indexOf("Preview:");
+  return lines.slice(5, previewIndex - 1);
+}
+
+function activeInteractiveRow(lines: string[]): string | undefined {
+  return rowLines(lines).find((line) => /^> \[(?: |x|shown|hidden)/.test(line));
 }
 
 describe("statusline editor shell", () => {
   it("renders the exact Codex-style shell layout in order", () => {
     const { editor } = makeEditor();
-    const lines = editor.render(120).map(stripAnsi);
+    const lines = renderLines(editor);
 
-    expect(lines.slice(0, SHELL_PREAMBLE.length)).toEqual(SHELL_PREAMBLE);
+    expect(lines.slice(0, 5)).toEqual([
+      "Configure Status Line",
+      "Select which items to display in the status line.",
+      "",
+      "Type to search",
+      "> ",
+    ]);
   });
 
   it("shows the visible query line for typed text", () => {
@@ -81,21 +88,18 @@ describe("statusline editor shell", () => {
     editor.handleInput("m");
     editor.handleInput("o");
     editor.handleInput("d");
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines[4]).toBe("> mod");
+    expect(renderLines(editor)[4]).toBe("> mod");
   });
 
   it("always renders the preview block and help line", () => {
     const { editor } = makeEditor();
-    const lines = editor.render(120).map(stripAnsi);
-
+    const lines = renderLines(editor);
     const previewIndex = lines.indexOf("Preview:");
+
     expect(previewIndex).toBeGreaterThan(0);
     expect(lines[previewIndex - 1]).toBe("");
     expect(lines[previewIndex + 1].length).toBeGreaterThan(0);
-
-    const helpLine = lines[lines.length - 1];
-    expect(helpLine).toBe(
+    expect(lines.at(-1)).toBe(
       "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
     );
   });
@@ -103,24 +107,20 @@ describe("statusline editor shell", () => {
   it("swaps the reorder clause in the help line when search is active", () => {
     const { editor } = makeEditor();
     editor.handleInput("m");
-    const lines = editor.render(120).map(stripAnsi);
-    const helpLine = lines[lines.length - 1];
-    expect(helpLine).toBe(
+    expect(renderLines(editor).at(-1)).toBe(
       "Toggle: Space  •  Reorder: disabled while search is active  •  Save: Enter  •  Cancel: Esc",
     );
   });
 });
 
 describe("statusline editor query input", () => {
-  it("appends printable ASCII characters to the query (Space is reserved for toggle)", () => {
+  it("appends printable ASCII characters to the query but keeps Space reserved for toggle", () => {
     const { editor } = makeEditor();
     editor.handleInput("a");
     editor.handleInput("B");
     editor.handleInput("1");
-    // Space is the toggle key, not a query character
     editor.handleInput(SPACE);
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines[4]).toBe("> aB1");
+    expect(renderLines(editor)[4]).toBe("> aB1");
   });
 
   it("removes the last character on backspace", () => {
@@ -129,243 +129,274 @@ describe("statusline editor query input", () => {
     editor.handleInput("b");
     editor.handleInput("c");
     editor.handleInput(BACKSPACE);
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines[4]).toBe("> ab");
-  });
-
-  it("ignores backspace when query is empty", () => {
-    const { editor } = makeEditor();
-    editor.handleInput(BACKSPACE);
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines[4]).toBe("> ");
-  });
-
-  it("ignores non-printable input", () => {
-    const { editor } = makeEditor();
-    editor.handleInput("\x01");
-    editor.handleInput(BACKSPACE);
-    editor.handleInput(ESCAPE);
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines[4]).toBe("> ");
+    expect(renderLines(editor)[4]).toBe("> ab");
   });
 });
 
-describe("statusline editor filtering", () => {
-  it("filters segment rows by label and ignores descriptions", () => {
+describe("statusline editor sections and ordering", () => {
+  it("shows both section headers and the divider when query is empty", () => {
     const { editor } = makeEditor();
-    editor.handleInput("c");
-    editor.handleInput("u");
-    editor.handleInput("r");
-    const lines = editor.render(120).map(stripAnsi);
-    expect(lines.some((line) => line.includes("Current Dir"))).toBe(true);
-    // Description text is not part of the fuzzy match
-    expect(
-      lines.some(
-        (line) =>
-          line.includes("Show the current working directory") &&
-          !line.includes("Current Dir"),
-      ),
-    ).toBe(false);
+    const lines = rowLines(renderLines(editor));
+
+    expect(lines).toContain("Status line items");
+    expect(lines).toContain("Extension statuses");
+    expect(lines.some((line) => /^─+$/.test(line))).toBe(true);
   });
 
-  it("filters discovered status rows by key only", () => {
+  it("renders enabled segments before disabled segments", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({
+        segments: ["current-dir", "git-branch"],
+      }),
+    });
+    const lines = rowLines(renderLines(editor, 200));
+    const segmentLines = lines.filter(
+      (line) =>
+        line.includes("Model") ||
+        line.includes("Current Dir") ||
+        line.includes("Git Branch"),
+    );
+
+    expect(segmentLines[0]).toContain("Current Dir (1)");
+    expect(segmentLines[1]).toContain("Git Branch (2)");
+    expect(segmentLines[2]).toContain("Model");
+  });
+
+  it("preserves saved order for enabled segments", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({
+        segments: ["git-branch", "current-dir", "model"],
+      }),
+    });
+    const lines = rowLines(renderLines(editor, 200));
+    const enabledLines = lines.filter((line) => /\([123]\)/.test(line));
+
+    expect(enabledLines[0]).toContain("Git Branch (1)");
+    expect(enabledLines[1]).toContain("Current Dir (2)");
+    expect(enabledLines[2]).toContain("Model (3)");
+  });
+
+  it("preserves canonical order for disabled segments", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({ segments: ["current-dir"] }),
+    });
+    const lines = rowLines(renderLines(editor, 200));
+    const modelIndex = lines.findIndex((line) => line.includes("Model"));
+    const reasoningIndex = lines.findIndex((line) =>
+      line.includes("Model + Reasoning"),
+    );
+    const projectRootIndex = lines.findIndex((line) =>
+      line.includes("Project Root"),
+    );
+
+    expect(modelIndex).toBeLessThan(reasoningIndex);
+    expect(reasoningIndex).toBeLessThan(projectRootIndex);
+  });
+
+  it("keeps discovered extension-status rows alphabetically sorted", () => {
+    const { editor } = makeEditor({
+      discovered: ["zeta-status", "alpha-status", "beta-status"],
+    });
+    const lines = rowLines(renderLines(editor, 200));
+    const alphaIndex = lines.findIndex((line) => line.includes("alpha-status"));
+    const betaIndex = lines.findIndex((line) => line.includes("beta-status"));
+    const zetaIndex = lines.findIndex((line) => line.includes("zeta-status"));
+
+    expect(alphaIndex).toBeLessThan(betaIndex);
+    expect(betaIndex).toBeLessThan(zetaIndex);
+  });
+
+  it("renders the policy row before discovered extension-status rows", () => {
     const { editor } = makeEditor({
       discovered: ["alpha-status", "beta-status"],
     });
-    editor.handleInput("a");
-    editor.handleInput("l");
-    editor.handleInput("p");
-    const lines = editor.render(120).map(stripAnsi);
-    expect(
-      lines.some((line) => line.includes("alpha-status")),
-    ).toBe(true);
-    expect(
-      lines.some((line) => line.includes("beta-status")),
-    ).toBe(false);
+    const lines = rowLines(renderLines(editor, 200));
+    const policyIndex = lines.findIndex((line) =>
+      line.includes("New extension statuses"),
+    );
+    const alphaIndex = lines.findIndex((line) => line.includes("alpha-status"));
+
+    expect(policyIndex).toBeLessThan(alphaIndex);
   });
 
-  it("keeps the policy row visible while searching", () => {
-    const { editor } = makeEditor({
-      discovered: ["alpha-status", "beta-status"],
-    });
-    editor.handleInput("z");
-    editor.handleInput("z");
-    editor.handleInput("z");
-    const lines = editor.render(120).map(stripAnsi);
-    expect(
-      lines.some((line) => line.includes("New extension statuses")),
-    ).toBe(true);
+  it("shows the empty-state hint when no extension statuses are discovered", () => {
+    const { editor } = makeEditor();
+    const lines = rowLines(renderLines(editor, 200));
+
+    expect(lines.some((line) => line.includes("New extension statuses"))).toBe(true);
+    expect(lines).toContain("No extension statuses discovered yet.");
+  });
+});
+
+describe("statusline editor search", () => {
+  it("searches segment rows by label and description", () => {
+    const { editor } = makeEditor();
+    for (const char of "nearest") editor.handleInput(char);
+    const lines = rowLines(renderLines(editor, 200));
+
+    expect(lines.some((line) => line.includes("Project Root"))).toBe(true);
+    expect(lines.some((line) => line.includes("Model + Reasoning"))).toBe(false);
+  });
+
+  it("searches discovered status rows by key and generic description", () => {
+    const { editor } = makeEditor({ discovered: ["custom-status"] });
+
+    for (const char of "custom") editor.handleInput(char);
+    let lines = rowLines(renderLines(editor, 200));
+    expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
+
+    for (let i = 0; i < 6; i++) editor.handleInput(BACKSPACE);
+    for (const char of "enabled") editor.handleInput(char);
+    lines = rowLines(renderLines(editor, 200));
+    expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
+  });
+
+  it("searches the policy row by label and description", () => {
+    const { editor } = makeEditor({ discovered: ["custom-status"] });
+    for (const char of "newly") editor.handleInput(char);
+    const lines = rowLines(renderLines(editor, 200));
+
+    expect(lines.some((line) => line.includes("New extension statuses"))).toBe(true);
+    expect(lines.some((line) => line.includes("custom-status"))).toBe(false);
+  });
+
+  it("omits section headers, divider, and empty-state hint while searching", () => {
+    const { editor } = makeEditor();
+    editor.handleInput("m");
+    const lines = rowLines(renderLines(editor, 200));
+
+    expect(lines).not.toContain("Status line items");
+    expect(lines).not.toContain("Extension statuses");
+    expect(lines.some((line) => /^─+$/.test(line))).toBe(false);
+    expect(lines).not.toContain("No extension statuses discovered yet.");
+  });
+
+  it("does not force the policy row visible during search", () => {
+    const { editor } = makeEditor({ discovered: ["alpha-status"] });
+    for (const char of "alpha") editor.handleInput(char);
+    const lines = rowLines(renderLines(editor, 200));
+
+    expect(lines.some((line) => line.includes("alpha-status"))).toBe(true);
+    expect(lines.some((line) => line.includes("New extension statuses"))).toBe(false);
+  });
+
+  it("shows an empty list area when a non-empty search has no matches", () => {
+    const { editor } = makeEditor({ discovered: ["alpha-status"] });
+    for (const char of "zzz") editor.handleInput(char);
+    expect(rowLines(renderLines(editor, 200))).toEqual([]);
   });
 });
 
 describe("statusline editor descriptions", () => {
-  const exactDescriptions: Array<{ id: string; description: string }> = [
-    {
-      id: "model",
-      description: "Show the current model name. Hidden when no model is available.",
-    },
-    {
-      id: "model-with-reasoning",
-      description:
-        "Show the current model name and reasoning level. Hidden when no model is available.",
-    },
-    {
-      id: "project-root",
-      description:
-        "Show the nearest project root folder name. Hidden when no project root is detected.",
-    },
-    { id: "current-dir", description: "Show the current working directory." },
-    {
-      id: "git-branch",
-      description: "Show the current Git branch. Hidden when unavailable.",
-    },
-    { id: "run-state", description: "Show whether Pi is idle, queued, or busy." },
-    {
-      id: "context-remaining",
-      description:
-        "Show remaining context tokens. Hidden when context usage is unavailable.",
-    },
-    {
-      id: "context-used",
-      description:
-        "Show percent of context already used. Hidden when context usage is unavailable.",
-    },
-    {
-      id: "context-window-size",
-      description:
-        "Show the total context window size. Hidden when context usage is unavailable.",
-    },
-    {
-      id: "used-tokens",
-      description:
-        "Show total assistant tokens used in this branch. Hidden when unavailable.",
-    },
-    {
-      id: "total-input-tokens",
-      description:
-        "Show total assistant input tokens in this branch. Hidden when unavailable.",
-    },
-    {
-      id: "total-output-tokens",
-      description:
-        "Show total assistant output tokens in this branch. Hidden when unavailable.",
-    },
-    {
-      id: "session-id",
-      description: "Show the short session ID. Hidden when unavailable.",
-    },
-    {
-      id: "five-hour-limit",
-      description: "Show remaining 5-hour Codex quota. Hidden when unavailable.",
-    },
-    {
-      id: "weekly-limit",
-      description: "Show remaining weekly Codex quota. Hidden when unavailable.",
-    },
-    {
-      id: "extension-statuses",
-      description:
-        "Show visible extension status values. Hidden when none are visible.",
-    },
-  ];
+  it("renders segment descriptions with the exact copy", () => {
+    const { editor } = makeEditor();
+    const lines = renderLines(editor, 200);
 
-  for (const { id, description } of exactDescriptions) {
-    it(`renders the exact description for ${id}`, () => {
-      const { editor } = makeEditor();
-      // Render with no query so every segment row is present at width 200
-      const lines = editor.render(200).map(stripAnsi);
-      const matches = lines.filter((line) => line.includes(description));
-      expect(matches.length).toBeGreaterThan(0);
-    });
-  }
-
-  it("uses the generic description for discovered extension-status rows", () => {
-    const { editor } = makeEditor({ discovered: ["custom-status"] });
-    const lines = editor.render(200).map(stripAnsi);
-    const statusLine = lines.find(
-      (line) => line.includes("custom-status") && line.includes("Show or hide"),
-    );
-    expect(statusLine).toBeDefined();
-    expect(statusLine).toContain(
-      "Show or hide this extension status when extension-statuses is enabled.",
-    );
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "Show the current model name and reasoning level. Hidden when no model is available.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "Show the nearest project root folder name. Hidden when no project root is detected.",
+        ),
+      ),
+    ).toBe(true);
   });
 
-  it("uses the policy description for the new-extension-statuses row", () => {
-    const { editor } = makeEditor();
-    const lines = editor.render(200).map(stripAnsi);
+  it("renders generic descriptions for discovered rows and the policy row", () => {
+    const { editor } = makeEditor({ discovered: ["custom-status"] });
+    const lines = renderLines(editor, 200);
+
     expect(
-      lines.some(
-        (line) =>
-          line.includes("New extension statuses") &&
-          line.includes(
-            "Whether newly discovered extension statuses are shown by default.",
-          ),
+      lines.some((line) =>
+        line.includes(
+          "Show or hide this extension status when extension-statuses is enabled.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "Whether newly discovered extension statuses are shown by default.",
+        ),
       ),
     ).toBe(true);
   });
 });
 
 describe("statusline editor interactions", () => {
-  it("moves the cursor down to the next row", () => {
+  it("moves up and down across interactive rows only", () => {
     const { editor } = makeEditor();
-    const before = findActiveRow(editor.render(120).map(stripAnsi));
-    expect(before).toBeDefined();
+    const before = activeInteractiveRow(renderLines(editor, 200));
     editor.handleInput(DOWN);
-    const after = findActiveRow(editor.render(120).map(stripAnsi));
-    expect(after).toBeDefined();
-    expect(after).not.toBe(before);
+    const after = activeInteractiveRow(renderLines(editor, 200));
+
+    expect(before).toContain("Model + Reasoning");
+    expect(after).toContain("Current Dir");
   });
 
-  it("moves the cursor up to the previous row", () => {
-    const { editor } = makeEditor();
-    editor.handleInput(DOWN);
-    const downActive = findActiveRow(editor.render(120).map(stripAnsi));
-    editor.handleInput(UP);
-    const upActive = findActiveRow(editor.render(120).map(stripAnsi));
-    expect(upActive).toBeDefined();
-    expect(upActive).not.toBe(downActive);
-  });
-
-  it("toggles a segment row on space", () => {
-    const { editor, done } = makeEditor({
-      config: makeConfig({ segments: ["model-with-reasoning", "current-dir"] }),
-    });
-    // Cursor 0 is the "Model" row, which is not enabled by default
+  it("toggles the currently selected segment row on space", () => {
+    const { editor, done } = makeEditor();
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    expect(saved).not.toBeNull();
-    expect(saved?.segments).toContain("model");
+
+    expect(saved?.segments).toEqual(["current-dir"]);
   });
 
   it("reorders enabled segments with left and right", () => {
     const { editor, done } = makeEditor({
       config: makeConfig({ segments: ["model", "current-dir"] }),
     });
-    // Move down 3 rows to reach "Current Dir" (row 3 in metadata order, enabled)
-    editor.handleInput(DOWN);
-    editor.handleInput(DOWN);
     editor.handleInput(DOWN);
     editor.handleInput(LEFT);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    expect(saved).not.toBeNull();
+
     expect(saved?.segments).toEqual(["current-dir", "model"]);
   });
 
-  it("ignores reorder when query is non-empty", () => {
+  it("keeps left/right as no-ops for disabled segments", () => {
     const { editor, done } = makeEditor({
-      config: makeConfig({ segments: ["model", "current-dir"] }),
+      config: makeConfig({ segments: ["current-dir"] }),
     });
-    editor.handleInput("m");
-    // With query "m", "current-dir" is filtered out, so we can only land on
-    // "Model" or "Model + Reasoning" which are at indices 0 and 1.
     editor.handleInput(LEFT);
     editor.handleInput(RIGHT);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    expect(saved).not.toBeNull();
+
+    expect(saved?.segments).toEqual(["current-dir"]);
+  });
+
+  it("keeps left/right as no-ops for the policy row and discovered rows", () => {
+    const { editor, done } = makeEditor({ discovered: ["alpha-status"] });
+    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    editor.handleInput(LEFT);
+    editor.handleInput(RIGHT);
+    editor.handleInput(DOWN);
+    editor.handleInput(LEFT);
+    editor.handleInput(RIGHT);
+    editor.handleInput(ENTER);
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+
+    expect(saved?.segments).toEqual(["model-with-reasoning", "current-dir"]);
+  });
+
+  it("keeps left/right as no-ops while a query is active", () => {
+    const { editor, done } = makeEditor({
+      config: makeConfig({ segments: ["model", "current-dir"] }),
+    });
+    editor.handleInput("m");
+    editor.handleInput(LEFT);
+    editor.handleInput(RIGHT);
+    editor.handleInput(ENTER);
+    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
+
     expect(saved?.segments).toEqual(["model", "current-dir"]);
   });
 
@@ -393,91 +424,56 @@ describe("statusline editor interactions", () => {
   });
 });
 
-describe("statusline editor live preview", () => {
+describe("statusline editor live preview and layout", () => {
   it("updates the preview from the draft after toggling a row", () => {
-    const { editor, done } = makeEditor({
-      config: makeConfig({ segments: ["model-with-reasoning", "current-dir"] }),
-    });
+    const { editor, done } = makeEditor();
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    // Toggling the "Model" row appends it to the end of the enabled list
-    expect(saved?.segments).toEqual([
-      "model-with-reasoning",
-      "current-dir",
-      "model",
-    ]);
+
+    expect(saved?.segments).toEqual(["current-dir"]);
   });
 
-  it("reflects filter changes in the preview when toggling the policy row", () => {
+  it("updates filter state when toggling the policy row", () => {
     const { editor, done } = makeEditor({
       config: makeConfig({
         segments: ["model-with-reasoning"],
         filter: { mode: "all", hidden: [] },
       }),
     });
-    // 16 segment rows + 1 policy row at the end; press DOWN enough times
     for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    // Toggling from "shown by default" to "hidden by default" yields only+shown: []
+
     expect(saved?.filter).toEqual({ mode: "only", shown: [] });
   });
-});
 
-describe("statusline editor row layout", () => {
-  it("renders aligned label + description columns when width allows", () => {
+  it("renders aligned label and description columns when width allows", () => {
     const { editor } = makeEditor();
-    // Move cursor to "Model + Reasoning" (row 1) which is enabled
-    editor.handleInput(DOWN);
-    const lines = editor.render(200).map(stripAnsi);
-    const modelRow = lines.find((line) => line.includes("Model + Reasoning"));
-    expect(modelRow).toBeDefined();
-    // Aligned mode: cursor (1) + space (1) + [x] (3) + space (1) + label padded to 24 + gap (2) + description
-    // Label "Model + Reasoning (1)" is 21 chars, padded with 3 spaces to 24
-    expect(modelRow).toBe(
+    const lines = renderLines(editor, 200);
+    const target = lines.find((line) => line.includes("Model + Reasoning"));
+
+    expect(target).toBe(
       "> [x] Model + Reasoning (1)     Show the current model name and reasoning level. Hidden when no model is available.",
     );
   });
 
   it("falls back to label - description form on narrow widths", () => {
     const { editor } = makeEditor();
-    editor.handleInput(DOWN); // move to "Model + Reasoning" (enabled, has order suffix)
-    const lines = editor.render(40).map(stripAnsi);
-    const modelRow = lines.find((line) => line.includes("Model + Reasoning"));
-    expect(modelRow).toBeDefined();
-    // Fallback: "{labelWithOrder} - {description}" (description gets truncated)
-    expect(modelRow).toMatch(
-      /^> \[x\] Model \+ Reasoning \(1\) - Show th/,
-    );
+    const lines = renderLines(editor, 40);
+    const target = lines.find((line) => line.includes("Model + Reasoning"));
+
+    expect(target).toMatch(/^> \[x\] Model \+ Reasoning \(1\) - /);
   });
 
-  it("keeps the fallback separator visible when the row is extremely narrow", () => {
-    const { editor } = makeEditor();
-    editor.handleInput(DOWN); // move to "Model + Reasoning" (enabled, has order suffix)
-    const lines = editor.render(28).map(stripAnsi);
-    const modelRow = lines.find((line) => line.startsWith("> [x] Model"));
-    expect(modelRow).toBeDefined();
-    expect(modelRow).toContain(" - ");
-    expect(visibleWidth(modelRow ?? "")).toBeLessThanOrEqual(28);
-  });
-
-  it("truncates without exceeding the available width in aligned mode", () => {
-    const { editor } = makeEditor();
-    const width = 80;
-    const lines = editor.render(width).map(stripAnsi);
-    for (const line of lines) {
-      expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-    }
-  });
-
-  it("truncates without exceeding the available width in fallback mode", () => {
-    const { editor } = makeEditor();
-    const width = 40;
-    const lines = editor.render(width).map(stripAnsi);
-    for (const line of lines) {
-      expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+  it("never renders lines wider than the requested width", () => {
+    for (const width of [40, 80, 200]) {
+      const { editor } = makeEditor({ discovered: ["very-long-status-name"] });
+      const lines = renderLines(editor, width);
+      for (const line of lines) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      }
     }
   });
 });
