@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { truncateToWidth } from "@earendil-works/pi-tui";
+import {
+  DEFAULT_SEGMENTS,
+  type StatusFilter,
+  type StatusLineSegmentId,
+} from "../shared/types.ts";
 
-// Color roles the live `buildFooterLine` rendering actually depends on. Kept
-// narrow on purpose: it only covers the segment colors and the "dim"
-// separator, not the full Pi `ThemeColor` union. `StatuslineMenuTheme` is
-// built as a superset of this so the same adapted theme can also feed the
-// bottom preview line.
 export type FooterRenderColor =
   | "accent"
   | "dim"
@@ -25,29 +25,7 @@ export type ModelLike = {
   reasoning?: boolean;
 };
 
-export type StatusLineSegmentId =
-  | "model"
-  | "model-with-reasoning"
-  | "project-name"
-  | "current-dir"
-  | "git-branch"
-  | "run-state"
-  | "context-remaining"
-  | "context-used"
-  | "context-window-size"
-  | "used-tokens"
-  | "total-input-tokens"
-  | "total-output-tokens"
-  | "session-id"
-  | "five-hour-limit"
-  | "weekly-limit"
-  | "extension-statuses";
-
 export type RunState = "busy" | "queued" | "idle";
-
-export type StatusFilter =
-  | { mode: "all"; hidden: string[] }
-  | { mode: "only"; shown: string[] };
 
 export type FooterRenderInput = {
   model?: ModelLike;
@@ -80,10 +58,7 @@ export type FooterRenderInput = {
   segments: StatusLineSegmentId[];
 };
 
-export const DEFAULT_SEGMENTS: StatusLineSegmentId[] = [
-  "model-with-reasoning",
-  "current-dir",
-];
+export { DEFAULT_SEGMENTS };
 
 export function normalizeThinkingLevel(level: string): string {
   switch (level) {
@@ -124,10 +99,7 @@ export function abbreviateHomeDir(cwd: string, home = homedir()): string {
 export function findProjectRootLabel(cwd: string): string | null {
   let current = cwd;
   while (true) {
-    if (
-      existsSync(join(current, ".git")) ||
-      existsSync(join(current, ".pi/settings.json"))
-    ) {
+    if (existsSync(join(current, ".git")) || existsSync(join(current, ".pi/settings.json"))) {
       const base = basename(current);
       return base || current;
     }
@@ -151,14 +123,10 @@ function getRateWindow(
   key: "fiveHour" | "weekly",
 ): { usedPercent: number } | null {
   const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
-  if (snapshot?.providerId !== "openai-codex") return null;
-  const window = snapshot.windows.find((item) => item.key === key);
-  if (
-    !window ||
-    typeof window.usedPercent !== "number" ||
-    window.unavailableReason
-  )
+  const window = snapshot?.windows.find((item) => item.key === key);
+  if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) {
     return null;
+  }
   return { usedPercent: window.usedPercent };
 }
 
@@ -189,20 +157,14 @@ function formatExtensionStatuses(
   input: FooterRenderInput,
   theme: ThemeLike,
 ): string | null {
-  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(
-    ([a], [b]) => a.localeCompare(b),
+  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) =>
+    a.localeCompare(b),
   );
   if (entries.length === 0) return null;
 
   const filter = input.filter;
-  const blocked =
-    filter.mode === "all"
-      ? new Set(normalizeFilterList(filter.hidden))
-      : undefined;
-  const allowed =
-    filter.mode === "only"
-      ? new Set(normalizeFilterList(filter.shown))
-      : undefined;
+  const blocked = filter.mode === "all" ? new Set(normalizeFilterList(filter.hidden)) : undefined;
+  const allowed = filter.mode === "only" ? new Set(normalizeFilterList(filter.shown)) : undefined;
   const visible =
     filter.mode === "all"
       ? entries.filter(([key]) => !blocked?.has(key))
@@ -262,11 +224,8 @@ function formatSegment(
       const window = input.contextUsage?.contextWindow;
       const percent = input.contextUsage?.percent;
       if (
-        total === undefined ||
-        total === null ||
-        window === undefined ||
-        percent === undefined ||
-        percent === null
+        total === undefined || total === null || window === undefined ||
+        percent === undefined || percent === null
       ) {
         return null;
       }
@@ -275,48 +234,32 @@ function formatSegment(
     }
     case "context-window-size": {
       const value = input.contextUsage?.contextWindow;
-      return value === undefined
-        ? null
-        : [`${formatCompactNumber(value)} ctx`, "dim"];
+      return value === undefined ? null : [`${formatCompactNumber(value)} ctx`, "dim"];
     }
     case "used-tokens": {
       const value = input.branchTotals?.totalTokens;
-      return value === undefined
-        ? null
-        : [`${formatCompactNumber(value)} tok`, "dim"];
+      return value === undefined ? null : [`${formatCompactNumber(value)} tok`, "dim"];
     }
     case "total-input-tokens": {
       const value = input.branchTotals?.input;
-      return value === undefined
-        ? null
-        : [`↑${formatCompactNumber(value)}`, "dim"];
+      return value === undefined ? null : [`↑${formatCompactNumber(value)}`, "dim"];
     }
     case "total-output-tokens": {
       const value = input.branchTotals?.output;
-      return value === undefined
-        ? null
-        : [`↓${formatCompactNumber(value)}`, "dim"];
+      return value === undefined ? null : [`↓${formatCompactNumber(value)}`, "dim"];
     }
     case "session-id":
-      return input.sessionId
-        ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"]
-        : null;
+      return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
     case "five-hour-limit": {
       const window = getRateWindow(input, "fiveHour");
       if (!window) return null;
-      const remaining = Math.min(
-        100,
-        Math.max(0, 100 - Math.round(window.usedPercent)),
-      );
+      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
       return [`5h ${remaining}% left`, rateColor(window.usedPercent)];
     }
     case "weekly-limit": {
       const window = getRateWindow(input, "weekly");
       if (!window) return null;
-      const remaining = Math.min(
-        100,
-        Math.max(0, 100 - Math.round(window.usedPercent)),
-      );
+      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
       return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
     }
     case "extension-statuses": {

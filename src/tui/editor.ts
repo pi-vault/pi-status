@@ -5,13 +5,11 @@ import {
   visibleWidth,
   type Component,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig } from "../config.ts";
-import {
-  buildFooterLine,
-  type FooterRenderInput,
-  type StatusLineSegmentId,
-} from "../render.ts";
-import type { StatuslineMenuTheme } from "./statusline-theme.ts";
+import type { FooterRenderInput } from "./render.ts";
+import { buildFooterLine } from "./render.ts";
+import type { StatusLineTheme } from "./theme.ts";
+import type { PiStatusConfig, StatusLineSegmentId } from "../shared/types.ts";
+import { isUsageSegment } from "../shared/types.ts";
 
 type SegmentMetadata = {
   id: StatusLineSegmentId;
@@ -20,11 +18,7 @@ type SegmentMetadata = {
 };
 
 const SEGMENT_ORDER: readonly SegmentMetadata[] = [
-  {
-    id: "model",
-    label: "Model",
-    description: "Current model name",
-  },
+  { id: "model", label: "Model", description: "Current model name" },
   {
     id: "model-with-reasoning",
     label: "Model + Reasoning",
@@ -111,8 +105,8 @@ const SEGMENT_METADATA = new Map(
 );
 
 const STATUS_ROW_DESCRIPTION = "Visible when extension-statuses is enabled";
-const POLICY_ROW_LABEL = "New extension statuses";
-const POLICY_ROW_DESCRIPTION = "Default visibility for new extension statuses";
+const POLICY_ROW_LABEL = "Extension Statuses";
+const POLICY_ROW_DESCRIPTION = "Show extension statuses";
 const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses yet.";
 const SEGMENT_SECTION_TITLE = "Status line items";
 const STATUS_SECTION_TITLE = "Extension statuses";
@@ -152,11 +146,9 @@ export function mapStatusDraftToFilter(input: {
     a.localeCompare(b),
   );
   const shown = new Set(input.shownKeys);
-
   if (input.newStatusesShown) {
     return { mode: "all", hidden: discovered.filter((k) => !shown.has(k)) };
   }
-
   return { mode: "only", shown: discovered.filter((k) => shown.has(k)) };
 }
 
@@ -169,34 +161,39 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return j === n.length;
 }
 
+function styleSelected(
+  text: string,
+  theme: StatusLineTheme,
+  selected: boolean,
+): string {
+  return selected ? theme.fg("accent", theme.bold(text)) : text;
+}
+
 function renderRowLine(
   row: {
-    cursor: string;
+    selected: boolean;
     checkbox: string;
     labelWithOrder: string;
     description: string;
   },
   width: number,
-  theme: StatuslineMenuTheme,
+  theme: StatusLineTheme,
 ): string {
   if (width < 1) return "";
 
-  const prefix = `${row.cursor} ${row.checkbox} `;
-  const prefixWidth = visibleWidth(prefix);
+  const markerRaw = row.selected ? "▸" : " ";
+  const marker = row.selected ? theme.fg("accent", markerRaw) : markerRaw;
+  const prefixRaw = `${markerRaw} ${row.checkbox} `;
+  const prefixWidth = visibleWidth(prefixRaw);
   const alignedMinWidth =
     prefixWidth +
     LABEL_COLUMN_WIDTH +
     LAYOUT_GAP.length +
     MIN_DESCRIPTION_WIDTH;
 
-  if (width < prefixWidth) {
-    // Not enough room for the full prefix. truncateToWidth uses an ellipsis
-    // strategy that does not preserve the first character at very small
-    // widths, so handle these cases explicitly to keep the cursor marker
-    // identifiable for selected rows.
-    if (row.cursor === ">") return ">".padEnd(width, " ");
-    return " ".repeat(width);
-  }
+  const checkbox = styleSelected(row.checkbox, theme, row.selected);
+
+  if (width < prefixWidth) return truncateToWidth(marker, width);
 
   if (width >= alignedMinWidth) {
     const labelFitted = truncateToWidth(row.labelWithOrder, LABEL_COLUMN_WIDTH);
@@ -206,32 +203,38 @@ function renderRowLine(
       width - prefixWidth - LABEL_COLUMN_WIDTH - LAYOUT_GAP.length,
     );
     const desc = truncateToWidth(row.description, descWidth);
-    return `${prefix}${labelPadded}${LAYOUT_GAP}${theme.dim(desc)}`;
+    const label = styleSelected(labelPadded, theme, row.selected);
+    return `${marker} ${checkbox} ${label}${LAYOUT_GAP}${theme.dim(desc)}`;
   }
 
   const separator = " - ";
   const remainingWidth = width - prefixWidth;
   if (remainingWidth <= separator.length + 1) {
-    return truncateToWidth(`${prefix}${row.labelWithOrder}`, width);
+    const label = truncateToWidth(
+      row.labelWithOrder,
+      Math.max(0, width - prefixWidth),
+    );
+    return truncateToWidth(`${markerRaw} ${row.checkbox} ${label}`, width);
   }
 
   const labelWidth = Math.max(1, remainingWidth - separator.length - 1);
-  const label = truncateToWidth(row.labelWithOrder, labelWidth);
-  const fallbackBase = `${prefix}${label}${separator}`;
-  const fallbackDescWidth = Math.max(0, width - visibleWidth(fallbackBase));
+  const labelRaw = truncateToWidth(row.labelWithOrder, labelWidth);
+  const fallbackBaseRaw = `${prefixRaw}${labelRaw}${separator}`;
+  const fallbackDescWidth = Math.max(0, width - visibleWidth(fallbackBaseRaw));
   const desc = truncateToWidth(row.description, fallbackDescWidth);
-  return `${fallbackBase}${theme.dim(desc)}`;
+  const label = styleSelected(labelRaw, theme, row.selected);
+  return `${marker} ${checkbox} ${label}${separator}${theme.dim(desc)}`;
 }
 
 function renderSectionHeader(
   text: string,
   width: number,
-  theme: StatuslineMenuTheme,
+  theme: StatusLineTheme,
 ): string {
   return truncateToWidth(theme.dim(text), width);
 }
 
-function renderDivider(width: number, theme: StatuslineMenuTheme): string {
+function renderDivider(width: number, theme: StatusLineTheme): string {
   return truncateToWidth(
     theme.fg("borderMuted", "─".repeat(Math.max(1, width))),
     width,
@@ -241,21 +244,26 @@ function renderDivider(width: number, theme: StatuslineMenuTheme): string {
 function renderHint(
   text: string,
   width: number,
-  theme: StatuslineMenuTheme,
+  theme: StatusLineTheme,
 ): string {
   return truncateToWidth(theme.dim(text), width);
 }
 
-export function createStatuslineEditor(options: {
+export function createStatusLineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
   previewInput: Omit<FooterRenderInput, "segments" | "filter">;
-  theme: StatuslineMenuTheme;
+  theme: StatusLineTheme;
   done: (result: PiStatusConfig | null) => void;
   requestRender: () => void;
+  usageAvailable?: boolean;
 }): Component {
   const orderedStatuses = [...options.discoveredStatuses].sort((a, b) =>
     a.localeCompare(b),
+  );
+  const visibleSegments = SEGMENT_ORDER.filter(
+    (segment) =>
+      options.usageAvailable !== false || !isUsageSegment(segment.id),
   );
   let enabledSegments = [...options.config.segments];
 
@@ -278,17 +286,18 @@ export function createStatuslineEditor(options: {
   }
 
   function getInteractiveRows(): InteractiveRow[] {
-    const enabled = enabledSegments.map((id) => ({
-      type: "segment",
-      id,
-    })) as SegmentInteractiveRow[];
+    const enabled = enabledSegments
+      .filter((id): id is StatusLineSegmentId =>
+        visibleSegments.some((segment) => segment.id === id),
+      )
+      .map((id) => ({ type: "segment", id })) as SegmentInteractiveRow[];
 
-    const disabled = SEGMENT_ORDER.filter(
-      (segment) => !isEnabledSegment(segment.id),
-    ).map((segment) => ({
-      type: "segment",
-      id: segment.id,
-    })) as SegmentInteractiveRow[];
+    const disabled = visibleSegments
+      .filter((segment) => !isEnabledSegment(segment.id))
+      .map((segment) => ({
+        type: "segment",
+        id: segment.id,
+      })) as SegmentInteractiveRow[];
 
     const policy: PolicyInteractiveRow = { type: "policy" };
     const statuses = orderedStatuses.map((key) => ({
@@ -301,20 +310,17 @@ export function createStatuslineEditor(options: {
 
   function rowMatchesQuery(row: InteractiveRow): boolean {
     if (!query) return true;
-
     if (row.type === "segment") {
       const meta = SEGMENT_METADATA.get(row.id);
       if (!meta) return false;
       return includesFuzzy(`${meta.label} ${meta.description}`, query);
     }
-
     if (row.type === "policy") {
       return includesFuzzy(
         `${POLICY_ROW_LABEL} ${POLICY_ROW_DESCRIPTION}`,
         query,
       );
     }
-
     return includesFuzzy(`${row.key} ${STATUS_ROW_DESCRIPTION}`, query);
   }
 
@@ -324,7 +330,6 @@ export function createStatuslineEditor(options: {
 
   function getRenderRows(): RenderRow[] {
     const filtered = getFilteredInteractiveRows();
-
     if (query) {
       return filtered.map((row, interactiveIndex) => ({
         type: "interactive",
@@ -343,25 +348,23 @@ export function createStatuslineEditor(options: {
 
     const renderRows: RenderRow[] = [];
     let interactiveIndex = 0;
-
     renderRows.push({ type: "header", text: SEGMENT_SECTION_TITLE });
-    for (const row of segmentRows) {
-      renderRows.push({ type: "interactive", row, interactiveIndex });
-      interactiveIndex++;
-    }
-
+    for (const row of segmentRows)
+      renderRows.push({
+        type: "interactive",
+        row,
+        interactiveIndex: interactiveIndex++,
+      });
     renderRows.push({ type: "divider" });
     renderRows.push({ type: "header", text: STATUS_SECTION_TITLE });
-
-    for (const row of extensionRows) {
-      renderRows.push({ type: "interactive", row, interactiveIndex });
-      interactiveIndex++;
-    }
-
-    if (orderedStatuses.length === 0) {
+    for (const row of extensionRows)
+      renderRows.push({
+        type: "interactive",
+        row,
+        interactiveIndex: interactiveIndex++,
+      });
+    if (orderedStatuses.length === 0)
       renderRows.push({ type: "hint", text: EMPTY_EXTENSION_STATUSES_HINT });
-    }
-
     return renderRows;
   }
 
@@ -377,26 +380,21 @@ export function createStatuslineEditor(options: {
 
   function toggleRow(row: InteractiveRow): void {
     if (row.type === "segment") {
-      if (isEnabledSegment(row.id)) {
+      if (isEnabledSegment(row.id))
         enabledSegments = enabledSegments.filter((x) => x !== row.id);
-      } else {
-        enabledSegments = [...enabledSegments, row.id];
-      }
+      else enabledSegments = [...enabledSegments, row.id];
       return;
     }
-
     if (row.type === "status") {
       if (shown.has(row.key)) shown.delete(row.key);
       else shown.add(row.key);
       return;
     }
-
     newPolicyShown = !newPolicyShown;
   }
 
   function moveSegment(delta: -1 | 1, row: InteractiveRow): void {
-    if (query) return;
-    if (row.type !== "segment") return;
+    if (query || row.type !== "segment") return;
     const idx = enabledSegments.indexOf(row.id);
     if (idx < 0) return;
     const next = idx + delta;
@@ -420,49 +418,37 @@ export function createStatuslineEditor(options: {
 
   return {
     invalidate(): void {},
-
     handleInput(data: string): void {
       clampSelection();
       const list = getFilteredInteractiveRows();
       const current = list[selected];
 
-      if (matchesKey(data, Key.escape)) {
-        options.done(null);
-        return;
-      }
-      if (matchesKey(data, Key.enter)) {
-        options.done(toConfig());
-        return;
-      }
+      if (matchesKey(data, Key.escape)) return void options.done(null);
+      if (matchesKey(data, Key.enter)) return void options.done(toConfig());
       if (matchesKey(data, Key.up)) {
         selected--;
         clampSelection();
-        options.requestRender();
-        return;
+        return void options.requestRender();
       }
       if (matchesKey(data, Key.down)) {
         selected++;
         clampSelection();
-        options.requestRender();
-        return;
+        return void options.requestRender();
       }
       if (matchesKey(data, Key.space) && current) {
         toggleRow(current);
         clampSelection();
-        options.requestRender();
-        return;
+        return void options.requestRender();
       }
       if (matchesKey(data, Key.left) && current) {
         moveSegment(-1, current);
         clampSelection();
-        options.requestRender();
-        return;
+        return void options.requestRender();
       }
       if (matchesKey(data, Key.right) && current) {
         moveSegment(1, current);
         clampSelection();
-        options.requestRender();
-        return;
+        return void options.requestRender();
       }
       if (matchesKey(data, Key.backspace)) {
         if (query.length > 0) {
@@ -472,24 +458,18 @@ export function createStatuslineEditor(options: {
         }
         return;
       }
-
       if (/^[\x21-\x7E]$/.test(data)) {
         query += data;
         clampSelection();
         options.requestRender();
       }
     },
-
     render(width: number): string[] {
       clampSelection();
       const renderRows = getRenderRows();
       const cfg = toConfig();
       const preview = buildFooterLine(
-        {
-          ...options.previewInput,
-          segments: cfg.segments,
-          filter: cfg.filter,
-        },
+        { ...options.previewInput, segments: cfg.segments, filter: cfg.filter },
         options.theme,
         width,
       );
@@ -504,7 +484,7 @@ export function createStatuslineEditor(options: {
       lines.push(truncateToWidth(options.theme.dim(SHELL_SUBTITLE), width));
       lines.push(truncateToWidth("", width));
       lines.push(truncateToWidth(options.theme.dim(SHELL_PLACEHOLDER), width));
-      lines.push(truncateToWidth(`> ${query}`, width));
+      lines.push(truncateToWidth(`▸ ${query}`, width));
 
       for (const renderRow of renderRows) {
         if (renderRow.type === "header") {
@@ -521,7 +501,7 @@ export function createStatuslineEditor(options: {
         }
 
         const row = renderRow.row;
-        const cursor = renderRow.interactiveIndex === selected ? ">" : " ";
+        const selectedRow = renderRow.interactiveIndex === selected;
         if (row.type === "segment") {
           const enabled = isEnabledSegment(row.id) ? "[x]" : "[ ]";
           const order = isEnabledSegment(row.id)
@@ -529,13 +509,12 @@ export function createStatuslineEditor(options: {
             : "";
           const meta = SEGMENT_METADATA.get(row.id);
           if (!meta) continue;
-          const labelWithOrder = `${meta.label}${order}`;
           lines.push(
             renderRowLine(
               {
-                cursor,
+                selected: selectedRow,
                 checkbox: enabled,
-                labelWithOrder,
+                labelWithOrder: `${meta.label}${order}`,
                 description: meta.description,
               },
               width,
@@ -545,12 +524,11 @@ export function createStatuslineEditor(options: {
           continue;
         }
         if (row.type === "status") {
-          const enabled = shown.has(row.key) ? "[x]" : "[ ]";
           lines.push(
             renderRowLine(
               {
-                cursor,
-                checkbox: enabled,
+                selected: selectedRow,
+                checkbox: shown.has(row.key) ? "[x]" : "[ ]",
                 labelWithOrder: row.key,
                 description: STATUS_ROW_DESCRIPTION,
               },
@@ -560,12 +538,11 @@ export function createStatuslineEditor(options: {
           );
           continue;
         }
-        const checkbox = `[${newPolicyShown ? "shown" : "hidden"}]`;
         lines.push(
           renderRowLine(
             {
-              cursor,
-              checkbox,
+              selected: selectedRow,
+              checkbox: newPolicyShown ? "[x]" : "[ ]",
               labelWithOrder: POLICY_ROW_LABEL,
               description: POLICY_ROW_DESCRIPTION,
             },
