@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/%40pi-vault%2Fpi-status)](https://www.npmjs.com/package/@pi-vault/pi-status)
 [![Quality](https://github.com/pi-vault/pi-status/actions/workflows/quality.yml/badge.svg?branch=master)](https://github.com/pi-vault/pi-status/actions/workflows/quality.yml)
-[![Node >= 22.12](https://img.shields.io/badge/node-%3E%3D22.12-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node >= 22.19](https://img.shields.io/badge/node-%3E%3D22.19-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 Replace Pi's default footer with a cleaner Codex-style status line that stays out of the way but keeps the useful bits visible.
@@ -10,6 +10,16 @@ Replace Pi's default footer with a cleaner Codex-style status line that stays ou
 Default status line:
 
 `model-with-reasoning · current-dir`
+
+## Screenshots
+
+Default status line rendering:
+
+![Status line UI](docs/assets/statusline-ui.png)
+
+Interactive configuration editor (`/statusline`):
+
+![Status line configuration](docs/assets/statusline-configuration.png)
 
 ## Install
 
@@ -83,7 +93,7 @@ model · run-state · git-branch · context-used · context-remaining · session
 
 ## Compatibility
 
-- Node.js `>=22.12`
+- Node.js `>=22.19`
 - Pi host environment with `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui`
 - Tested in this repo against `@earendil-works/pi-coding-agent@0.78.x` and `@earendil-works/pi-tui@0.78.x`
 
