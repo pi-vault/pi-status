@@ -11,12 +11,18 @@ Default status line:
 
 `model-with-reasoning · current-dir`
 
-> **Status:** Early-adopter release (`v0.1.0`). It is ready to use, but the available segments and configuration details may still change before `v1.0`.
-
 ## Install
+
+Install `pi-status`:
 
 ```bash
 pi install npm:@pi-vault/pi-status
+```
+
+Optional: install `pi-usage` if you want `/usage` plus the usage-backed footer segments:
+
+```bash
+pi install npm:@pi-vault/pi-usage
 ```
 
 Then reload Pi:
@@ -59,7 +65,7 @@ You can build your footer from these items:
 - `weekly-limit`
 - `extension-statuses`
 
-`five-hour-limit` and `weekly-limit` come from [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage) and only appear when that usage data is available.
+`five-hour-limit` and `weekly-limit` require standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). When `pi-usage` is not installed or has not responded yet, those items are hidden from `/statusline` and omitted from the footer.
 
 ## Common Setups
 

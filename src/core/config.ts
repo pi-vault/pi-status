@@ -11,14 +11,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   DEFAULT_SEGMENTS,
+  isKnownSegment,
+  type PiStatusConfig,
   type StatusFilter,
   type StatusLineSegmentId,
-} from "./render.ts";
-
-export type PiStatusConfig = {
-  segments: StatusLineSegmentId[];
-  filter: StatusFilter;
-};
+} from "../shared/types.ts";
 
 export type ConfigLoadResult = {
   config: PiStatusConfig;
@@ -29,25 +26,6 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
   segments: [...DEFAULT_SEGMENTS],
   filter: { mode: "all", hidden: [] },
 };
-
-const KNOWN_SEGMENTS = new Set<StatusLineSegmentId>([
-  "model",
-  "model-with-reasoning",
-  "project-name",
-  "current-dir",
-  "git-branch",
-  "run-state",
-  "context-remaining",
-  "context-used",
-  "context-window-size",
-  "used-tokens",
-  "total-input-tokens",
-  "total-output-tokens",
-  "session-id",
-  "five-hour-limit",
-  "weekly-limit",
-  "extension-statuses",
-]);
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
@@ -76,11 +54,10 @@ export function normalizeSegments(input: unknown): StatusLineSegmentId[] {
 
   for (const value of input) {
     if (typeof value !== "string") continue;
-    if (!KNOWN_SEGMENTS.has(value as StatusLineSegmentId)) continue;
-    const id = value as StatusLineSegmentId;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
+    if (!isKnownSegment(value)) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
   }
 
   return out;
@@ -103,8 +80,9 @@ function normalizeFilterValues(input: unknown): string[] {
 }
 
 export function normalizeStatusFilter(input: unknown): StatusFilter {
-  if (!input || typeof input !== "object" || Array.isArray(input))
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { mode: "all", hidden: [] };
+  }
   const mode = (input as { mode?: unknown }).mode;
 
   if (mode === "all") {
@@ -127,8 +105,9 @@ export function normalizeStatusFilter(input: unknown): StatusFilter {
 function readJsonObject(path: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
+    }
     return parsed as Record<string, unknown>;
   } catch {
     return null;
@@ -141,24 +120,17 @@ type SettingsFileState =
   | { exists: true; malformed: true };
 
 function readSettingsFileState(path: string): SettingsFileState {
-  if (!existsSync(path)) {
-    return { exists: false, value: {} };
-  }
-
+  if (!existsSync(path)) return { exists: false, value: {} };
   const parsed = readJsonObject(path);
-  if (parsed) {
-    return { exists: true, value: parsed };
-  }
-
+  if (parsed) return { exists: true, value: parsed };
   return { exists: true, malformed: true };
 }
 
 function normalizePiStatus(input: unknown): PiStatusConfig {
-  if (!input || typeof input !== "object" || Array.isArray(input))
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
     return cloneDefaultConfig();
-  const segments = normalizeSegments(
-    (input as { segments?: unknown }).segments,
-  );
+  }
+  const segments = normalizeSegments((input as { segments?: unknown }).segments);
   const filter = normalizeStatusFilter((input as { filter?: unknown }).filter);
   return {
     segments: segments.length > 0 ? segments : [...DEFAULT_SEGMENTS],
@@ -167,18 +139,12 @@ function normalizePiStatus(input: unknown): PiStatusConfig {
 }
 
 function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
-  if (
-    !globalValue ||
-    typeof globalValue !== "object" ||
-    Array.isArray(globalValue)
-  )
+  if (!globalValue || typeof globalValue !== "object" || Array.isArray(globalValue)) {
     return projectValue ?? globalValue;
-  if (
-    !projectValue ||
-    typeof projectValue !== "object" ||
-    Array.isArray(projectValue)
-  )
+  }
+  if (!projectValue || typeof projectValue !== "object" || Array.isArray(projectValue)) {
     return globalValue;
+  }
   const g = globalValue as Record<string, unknown>;
   const p = projectValue as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...g, ...p };
@@ -186,12 +152,8 @@ function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
   const gFilter = g.filter;
   const pFilter = p.filter;
   if (
-    gFilter &&
-    typeof gFilter === "object" &&
-    !Array.isArray(gFilter) &&
-    pFilter &&
-    typeof pFilter === "object" &&
-    !Array.isArray(pFilter)
+    gFilter && typeof gFilter === "object" && !Array.isArray(gFilter) &&
+    pFilter && typeof pFilter === "object" && !Array.isArray(pFilter)
   ) {
     merged.filter = {
       ...(gFilter as Record<string, unknown>),
@@ -240,9 +202,7 @@ export function saveConfigToSettings(
 
   const targetState = readSettingsFileState(path);
   if ("malformed" in targetState) {
-    throw new Error(
-      `Refusing to write malformed or non-object settings file: ${path}`,
-    );
+    throw new Error(`Refusing to write malformed or non-object settings file: ${path}`);
   }
 
   const base = targetState.value;

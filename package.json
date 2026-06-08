@@ -29,19 +29,19 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts",
-      "node_modules/@pi-vault/pi-usage/src/index.ts"
+      "./src/index.ts"
     ]
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.19"
   },
   "files": [
     "src",
+    "docs/assets",
     "README.md"
   ],
   "dependencies": {
-    "@pi-vault/pi-usage": "^0.1.1"
+    "@pi-vault/pi-usage": "^0.2.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

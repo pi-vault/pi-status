@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromPiTheme, noTheme } from "../src/ui/statusline-theme.ts";
+import { fromPiTheme, noTheme } from "../src/tui/theme.ts";
 
 function makeSpyTheme() {
   return {
