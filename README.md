@@ -5,11 +5,13 @@
 [![Node >= 22.19](https://img.shields.io/badge/node-%3E%3D22.19-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-Replace Pi's default footer with a cleaner Codex-style status line that stays out of the way but keeps the useful bits visible.
+Replace Pi's default footer with a compact status line that shows the session details you actually care about. The extension installs a live footer and adds `/statusline`, an interactive editor for choosing, ordering, and previewing footer segments.
 
-Default status line:
+Default footer:
 
-`model-with-reasoning · current-dir`
+```text
+model-with-reasoning · current-dir
+```
 
 ## Screenshots
 
@@ -21,42 +23,45 @@ Interactive configuration editor (`/statusline`):
 
 ![Status line configuration](docs/assets/statusline-configuration.png)
 
-## Install
+## Install And Reload
 
-Install `pi-status`:
+Install the extension:
 
 ```bash
 pi install npm:@pi-vault/pi-status
 ```
 
-Optional: install `pi-usage` if you want `/usage` plus the usage-backed footer segments:
+Optional: install `pi-usage` if you want the `five-hour-limit` and `weekly-limit` footer segments:
 
 ```bash
 pi install npm:@pi-vault/pi-usage
 ```
 
-Then reload Pi:
+Reload Pi after installing or upgrading:
 
 ```bash
 /reload
 ```
 
-## Use
+## Use `/statusline`
 
-Once installed, the footer updates automatically.
+Once installed, the footer updates automatically. Run `/statusline` inside Pi to open the interactive editor.
 
-Use `/statusline` inside Pi to:
+The editor lets you:
 
 - turn footer items on or off
-- reorder the items you want to see
+- reorder enabled items with `Left` and `Right`
+- search the segment list
 - preview the result before saving
 - control which extension status messages are shown
 
 Changes are saved and reused the next time Pi starts.
 
-## Available Status Items
+During editing, the live footer is temporarily hidden so the inline UI can use the full width cleanly.
 
-You can build your footer from these items:
+## Available Footer Items
+
+You can compose the footer from these segment IDs:
 
 - `model`
 - `model-with-reasoning`
@@ -75,9 +80,11 @@ You can build your footer from these items:
 - `weekly-limit`
 - `extension-statuses`
 
-`five-hour-limit` and `weekly-limit` require standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). When `pi-usage` is not installed or has not responded yet, those items are hidden from `/statusline` and omitted from the footer.
+`five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). When `pi-usage` is not installed or has not responded yet, those segments are hidden from `/statusline` and omitted from the footer.
 
-## Common Setups
+`extension-statuses` renders the visible extension status values reported by Pi extensions. `/statusline` also lets you hide individual status keys or switch to an allowlist.
+
+## Common Examples
 
 Keep it minimal:
 
@@ -91,19 +98,30 @@ Show more session detail:
 model · run-state · git-branch · context-used · context-remaining · session-id
 ```
 
+Usage-aware footer:
+
+```text
+model-with-reasoning · current-dir · five-hour-limit · weekly-limit
+```
+
+Show extension activity too:
+
+```text
+model · current-dir · extension-statuses
+```
+
 ## Compatibility
 
 - Node.js `>=22.19`
 - Pi host environment with `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui`
-- Tested in this repo against `@earendil-works/pi-coding-agent@0.78.x` and `@earendil-works/pi-tui@0.78.x`
+- Tested in this repo against `@earendil-works/pi-coding-agent@0.79.3` and `@earendil-works/pi-tui@0.79.3`
 
-## Development Setup
+## Development
 
 ```bash
 pnpm install
 pnpm check
-pnpm pack --dry-run
-pi -e .
+pnpm run pack:dry-run
 ```
 
 ## License
