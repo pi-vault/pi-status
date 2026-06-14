@@ -2,10 +2,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-  loadConfig,
-  saveConfigToSettings,
-} from "./core/config.ts";
+import { loadConfig, saveConfigToSettings } from "./core/config.ts";
+import { buildSnapshot } from "./core/snapshot.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
@@ -41,37 +39,9 @@ const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
 function isLiveTheme(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const candidate = value as { fg?: unknown; bold?: unknown };
-  return typeof candidate.fg === "function" && typeof candidate.bold === "function";
-}
-
-function aggregateBranchTotals(ctx: ExtensionContext): {
-  input: number;
-  output: number;
-  totalTokens: number;
-} {
-  const totals = { input: 0, output: 0, totalTokens: 0 };
-  const branch = ctx.sessionManager.getBranch() as unknown[];
-
-  for (const entry of branch ?? []) {
-    if (!entry || typeof entry !== "object") continue;
-    if ((entry as { type?: unknown }).type !== "message") continue;
-    const message = (
-      entry as {
-        message?: {
-          role?: unknown;
-          usage?: { input?: number; output?: number; totalTokens?: number };
-        };
-      }
-    ).message;
-    if (message?.role !== "assistant") continue;
-    const usage = message.usage;
-    if (!usage) continue;
-    if (typeof usage.input === "number") totals.input += usage.input;
-    if (typeof usage.output === "number") totals.output += usage.output;
-    if (typeof usage.totalTokens === "number") totals.totalTokens += usage.totalTokens;
-  }
-
-  return totals;
+  return (
+    typeof candidate.fg === "function" && typeof candidate.bold === "function"
+  );
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
@@ -93,7 +63,9 @@ export default function createExtension(pi: ExtensionAPI): void {
     const factory: FooterFactory = (tui, theme, footerData) => {
       requestRender = () => tui.requestRender?.();
       usageRuntime.setOnChange(requestRender);
-      const unsubscribe = footerData.onBranchChange?.(() => tui.requestRender?.());
+      const unsubscribe = footerData.onBranchChange?.(() =>
+        tui.requestRender?.(),
+      );
 
       return {
         dispose() {
@@ -107,23 +79,25 @@ export default function createExtension(pi: ExtensionAPI): void {
         render(width: number) {
           const activeCtx = currentCtx ?? ctx;
           lastGitBranch = footerData.getGitBranch();
-          lastExtensionStatuses = new Map(footerData.getExtensionStatuses().entries());
+          lastExtensionStatuses = new Map(
+            footerData.getExtensionStatuses().entries(),
+          );
+          const snapshot = buildSnapshot({
+            model: activeCtx.model,
+            cwd: activeCtx.cwd,
+            thinkingLevel: String(pi.getThinkingLevel()),
+            gitBranch: lastGitBranch,
+            isIdle: activeCtx.isIdle(),
+            hasPendingMessages: activeCtx.hasPendingMessages(),
+            contextUsage: activeCtx.getContextUsage(),
+            branch: activeCtx.sessionManager.getBranch() as unknown[],
+            sessionId: activeCtx.sessionManager.getSessionId(),
+            usageState: usageRuntime.getState(),
+            extensionStatuses: lastExtensionStatuses,
+          });
           const line = buildFooterLine(
             {
-              model: activeCtx.model,
-              cwd: activeCtx.cwd,
-              thinkingLevel: String(pi.getThinkingLevel()),
-              gitBranch: lastGitBranch,
-              runState: !activeCtx.isIdle()
-                ? "busy"
-                : activeCtx.hasPendingMessages()
-                  ? "queued"
-                  : "idle",
-              contextUsage: activeCtx.getContextUsage(),
-              branchTotals: aggregateBranchTotals(activeCtx),
-              sessionId: activeCtx.sessionManager.getSessionId(),
-              usageState: usageRuntime.getState(),
-              extensionStatuses: lastExtensionStatuses,
+              ...snapshot,
               filter: runtimeConfig.filter,
               segments: runtimeConfig.segments,
             },
@@ -156,39 +130,43 @@ export default function createExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const discovered = [...lastExtensionStatuses.keys()].sort((a, b) => a.localeCompare(b));
+      const discovered = [...lastExtensionStatuses.keys()].sort((a, b) =>
+        a.localeCompare(b),
+      );
 
       let result: PiStatusConfig | null = null;
       try {
         installEmptyFooter(ctx);
-        result = await ctx.ui.custom<PiStatusConfig | null>((tui, theme, _keys, done) => {
-          const activeCtx = currentCtx ?? ctx;
-          const menuTheme: StatusLineTheme = isLiveTheme(theme) ? fromPiTheme(theme) : noTheme;
-          return createStatusLineEditor({
-            config: runtimeConfig,
-            discoveredStatuses: discovered,
-            previewInput: {
+        result = await ctx.ui.custom<PiStatusConfig | null>(
+          (tui, theme, _keys, done) => {
+            const activeCtx = currentCtx ?? ctx;
+            const menuTheme: StatusLineTheme = isLiveTheme(theme)
+              ? fromPiTheme(theme)
+              : noTheme;
+            const snapshot = buildSnapshot({
               model: activeCtx.model,
               cwd: activeCtx.cwd,
               thinkingLevel: String(pi.getThinkingLevel()),
               gitBranch: lastGitBranch,
-              runState: !activeCtx.isIdle()
-                ? "busy"
-                : activeCtx.hasPendingMessages()
-                  ? "queued"
-                  : "idle",
+              isIdle: activeCtx.isIdle(),
+              hasPendingMessages: activeCtx.hasPendingMessages(),
               contextUsage: activeCtx.getContextUsage(),
-              branchTotals: aggregateBranchTotals(activeCtx),
+              branch: activeCtx.sessionManager.getBranch() as unknown[],
               sessionId: activeCtx.sessionManager.getSessionId(),
               usageState: usageRuntime.getState(),
               extensionStatuses: lastExtensionStatuses,
-            },
-            theme: menuTheme,
-            done,
-            requestRender: () => tui.requestRender?.(),
-            usageAvailable: usageRuntime.getAvailable(),
-          });
-        });
+            });
+            return createStatusLineEditor({
+              config: runtimeConfig,
+              discoveredStatuses: discovered,
+              previewInput: snapshot,
+              theme: menuTheme,
+              done,
+              requestRender: () => tui.requestRender?.(),
+              usageAvailable: usageRuntime.getAvailable(),
+            });
+          },
+        );
       } finally {
         installFooter(ctx);
       }
@@ -200,7 +178,10 @@ export default function createExtension(pi: ExtensionAPI): void {
         runtimeConfig = result;
         requestRender?.();
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to save statusline settings";
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to save statusline settings";
         ctx.ui.notify(message, "warning");
       }
     },
