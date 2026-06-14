@@ -28,6 +28,24 @@ type FooterFactory = (
   footerData: FooterDataLike,
 ) => FooterComponent;
 
+type RuntimeState = {
+  config: PiStatusConfig;
+  ctx: ExtensionContext | undefined;
+  requestRender: (() => void) | undefined;
+  gitBranch: string | null;
+  extensionStatuses: Map<string, string>;
+};
+
+function createRuntimeState(): RuntimeState {
+  return {
+    config: loadConfig().config,
+    ctx: undefined,
+    requestRender: undefined,
+    gitBranch: null,
+    extensionStatuses: new Map(),
+  };
+}
+
 const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
   render(): string[] {
     return [];
@@ -45,24 +63,20 @@ function isLiveTheme(value: unknown): boolean {
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
-  let runtimeConfig: PiStatusConfig = loadConfig().config;
-  let currentCtx: ExtensionContext | undefined;
-  let requestRender: (() => void) | undefined;
-  let lastGitBranch: string | null = null;
-  let lastExtensionStatuses = new Map<string, string>();
+  const state = createRuntimeState();
 
   const usageRuntime = createUsageRuntime(pi);
 
   function refreshRuntimeConfig(cwd?: string): void {
-    runtimeConfig = loadConfig(cwd ? { cwd } : undefined).config;
+    state.config = loadConfig(cwd ? { cwd } : undefined).config;
   }
 
   function installFooter(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
 
     const factory: FooterFactory = (tui, theme, footerData) => {
-      requestRender = () => tui.requestRender?.();
-      usageRuntime.setOnChange(requestRender);
+      state.requestRender = () => tui.requestRender?.();
+      usageRuntime.setOnChange(state.requestRender);
       const unsubscribe = footerData.onBranchChange?.(() =>
         tui.requestRender?.(),
       );
@@ -70,36 +84,37 @@ export default function createExtension(pi: ExtensionAPI): void {
       return {
         dispose() {
           unsubscribe?.();
-          if (requestRender === tui.requestRender) requestRender = undefined;
-          usageRuntime.setOnChange(requestRender);
+          if (state.requestRender === tui.requestRender)
+            state.requestRender = undefined;
+          usageRuntime.setOnChange(state.requestRender);
         },
         invalidate() {
-          requestRender?.();
+          state.requestRender?.();
         },
         render(width: number) {
-          const activeCtx = currentCtx ?? ctx;
-          lastGitBranch = footerData.getGitBranch();
-          lastExtensionStatuses = new Map(
+          const activeCtx = state.ctx ?? ctx;
+          state.gitBranch = footerData.getGitBranch();
+          state.extensionStatuses = new Map(
             footerData.getExtensionStatuses().entries(),
           );
           const snapshot = buildSnapshot({
             model: activeCtx.model,
             cwd: activeCtx.cwd,
             thinkingLevel: String(pi.getThinkingLevel()),
-            gitBranch: lastGitBranch,
+            gitBranch: state.gitBranch,
             isIdle: activeCtx.isIdle(),
             hasPendingMessages: activeCtx.hasPendingMessages(),
             contextUsage: activeCtx.getContextUsage(),
             branch: activeCtx.sessionManager.getBranch() as unknown[],
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
-            extensionStatuses: lastExtensionStatuses,
+            extensionStatuses: state.extensionStatuses,
           });
           const line = buildFooterLine(
             {
               ...snapshot,
-              filter: runtimeConfig.filter,
-              segments: runtimeConfig.segments,
+              filter: state.config.filter,
+              segments: state.config.segments,
             },
             theme,
             width,
@@ -117,9 +132,9 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   function refresh(ctx: ExtensionContext): void {
-    currentCtx = ctx;
+    state.ctx = ctx;
     refreshRuntimeConfig(ctx.cwd);
-    requestRender?.();
+    state.requestRender?.();
   }
 
   pi.registerCommand("statusline", {
@@ -130,7 +145,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const discovered = [...lastExtensionStatuses.keys()].sort((a, b) =>
+      const discovered = [...state.extensionStatuses.keys()].sort((a, b) =>
         a.localeCompare(b),
       );
 
@@ -139,7 +154,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         installEmptyFooter(ctx);
         result = await ctx.ui.custom<PiStatusConfig | null>(
           (tui, theme, _keys, done) => {
-            const activeCtx = currentCtx ?? ctx;
+            const activeCtx = state.ctx ?? ctx;
             const menuTheme: StatusLineTheme = isLiveTheme(theme)
               ? fromPiTheme(theme)
               : noTheme;
@@ -147,17 +162,17 @@ export default function createExtension(pi: ExtensionAPI): void {
               model: activeCtx.model,
               cwd: activeCtx.cwd,
               thinkingLevel: String(pi.getThinkingLevel()),
-              gitBranch: lastGitBranch,
+              gitBranch: state.gitBranch,
               isIdle: activeCtx.isIdle(),
               hasPendingMessages: activeCtx.hasPendingMessages(),
               contextUsage: activeCtx.getContextUsage(),
               branch: activeCtx.sessionManager.getBranch() as unknown[],
               sessionId: activeCtx.sessionManager.getSessionId(),
               usageState: usageRuntime.getState(),
-              extensionStatuses: lastExtensionStatuses,
+              extensionStatuses: state.extensionStatuses,
             });
             return createStatusLineEditor({
-              config: runtimeConfig,
+              config: state.config,
               discoveredStatuses: discovered,
               previewInput: snapshot,
               theme: menuTheme,
@@ -175,8 +190,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 
       try {
         saveConfigToSettings(result, { cwd: ctx.cwd });
-        runtimeConfig = result;
-        requestRender?.();
+        state.config = result;
+        state.requestRender?.();
       } catch (error) {
         const message =
           error instanceof Error
@@ -190,13 +205,13 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     usageRuntime.requestCurrent();
     refreshRuntimeConfig(ctx.cwd);
-    currentCtx = ctx;
+    state.ctx = ctx;
     installFooter(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
     refreshRuntimeConfig(ctx.cwd);
-    currentCtx = ctx;
+    state.ctx = ctx;
     installFooter(ctx);
   });
 
@@ -209,8 +224,8 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
-    currentCtx = undefined;
-    requestRender = undefined;
+    state.ctx = undefined;
+    state.requestRender = undefined;
     usageRuntime.setOnChange(undefined);
     if (ctx.hasUI) ctx.ui.setFooter(undefined);
   });
