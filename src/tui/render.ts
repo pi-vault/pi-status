@@ -187,7 +187,7 @@ function formatExtensionStatuses(
   return parts.join(theme.fg("dim", " | "));
 }
 
-function formatSegment(
+export function formatSegment(
   id: StatusLineSegmentId,
   input: FooterRenderInput,
   theme: ThemeLike,
