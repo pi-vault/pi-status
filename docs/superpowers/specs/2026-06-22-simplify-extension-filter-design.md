@@ -34,15 +34,14 @@ export type PiStatusConfig = {
 
 New extension statuses default to visible. Users hide individual keys via the editor. No policy row, no mode concept.
 
-### Config migration
+### Config normalization
 
-`normalizeStatusFilter` becomes `normalizeExtensionSegments`. It must handle three input shapes from existing settings files:
+`normalizeStatusFilter` becomes `normalizeExtensionSegments`. It handles:
 
-1. **`{ mode: "all", hidden: [...] }`** — convert to `{ hidden: [...] }` (drop `mode`, keep `hidden`).
-2. **`{ mode: "only", shown: [...] }`** — cannot invert without knowing all discovered keys at load time. Since we default to "show all", treat this as `{ hidden: [] }` (show everything). Users who had an allowlist will see all statuses after the migration and can re-hide from the editor.
-3. **Missing/invalid** — default to `{ hidden: [] }`.
+- **Object with `hidden` array** — normalizes `{ hidden: [...] }`.
+- **Missing/invalid** — defaults to `{ hidden: [] }`.
 
-The field name in the settings JSON changes from `filter` to `extensionSegments`. The legacy fallback happens in `normalizePiStatus`: read `extensionSegments` first, fall back to `filter` if present. This handles mixed old/new settings files across global and project configs.
+The field name in the settings JSON is `extensionSegments`. No legacy fallback — old `filter` fields are ignored.
 
 ### Config persistence
 
@@ -95,7 +94,7 @@ Rename the `filter` field to `extensionSegments` with type `ExtensionSegments`. 
 
 ### Tests
 
-- **Config tests:** Update `normalizeStatusFilter` tests to test `normalizeExtensionSegments`. Add migration cases for old `{ mode: "only", shown }` and old `{ mode: "all", hidden }` inputs. Test that a legacy `filter` field is read and migrated.
+- **Config tests:** Update `normalizeStatusFilter` tests to test `normalizeExtensionSegments`. Test normalization of valid and invalid inputs.
 - **Render tests:** Update `buildFooterLine` extension-status tests to use `extensionSegments` instead of `filter`. Remove any tests that exercised `mode: "only"` filter behavior (that mode no longer exists).
 - **Editor tests:** Remove policy-row tests. Update filter persistence tests to verify `extensionSegments: { hidden: [...] }` output. Update navigation step counts (one fewer interactive row since the policy row is gone).
 
@@ -108,11 +107,11 @@ Update the extension-status note to remove any reference to allowlist mode. The 
 | File                   | Change                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------ |
 | `src/shared/types.ts`  | Replace `StatusFilter` with `ExtensionSegments`, rename field                        |
-| `src/core/config.ts`   | Rename + simplify normalize/save/merge/clone functions, add legacy migration         |
+| `src/core/config.ts`   | Rename + simplify normalize/save/merge/clone functions                                |
 | `src/tui/render.ts`    | Rename `filter` to `extensionSegments` in `FooterRenderInput`, simplify filter logic |
 | `src/tui/editor.ts`    | Remove policy row, simplify draft-to-config mapping, rename field                    |
 | `src/index.ts`         | Update `filter:` to `extensionSegments:` at call site                                |
-| `tests/config.test.ts` | Update normalize tests, add migration tests                                          |
+| `tests/config.test.ts` | Update normalize tests                                                               |
 | `tests/render.test.ts` | Update extension-status tests to use new field name                                  |
 | `tests/editor.test.ts` | Remove policy-row tests, update step counts and filter assertions                    |
 | `README.md`            | Update extension-status description                                                  |

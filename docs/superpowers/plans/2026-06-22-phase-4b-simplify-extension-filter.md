@@ -1,6 +1,6 @@
 # Phase 4b: Simplify Extension Status Filter
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: COMPLETE** — Implemented and committed. Legacy migration code subsequently removed (clean break, no backward compat for old `filter` field).
 
 **Goal:** Replace the two-mode `StatusFilter` discriminated union with a simple `ExtensionSegments = { hidden: string[] }` type, remove the policy row from the editor, and rename the config field from `filter` to `extensionSegments`.
 

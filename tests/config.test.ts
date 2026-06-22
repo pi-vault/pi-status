@@ -34,18 +34,6 @@ describe("config", () => {
     });
   });
 
-  it("migrates legacy { mode: 'all', hidden } to { hidden }", () => {
-    expect(
-      normalizeExtensionSegments({ mode: "all", hidden: ["x", "y"] }),
-    ).toEqual({ hidden: ["x", "y"] });
-  });
-
-  it("migrates legacy { mode: 'only', shown } to { hidden: [] }", () => {
-    expect(
-      normalizeExtensionSegments({ mode: "only", shown: ["x"] }),
-    ).toEqual({ hidden: [] });
-  });
-
   it("loads precedence: settings > default", () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
     const globalHome = join(dir, "home");
@@ -83,36 +71,6 @@ describe("config", () => {
       const viaDefault = loadConfig({ cwd: project });
       expect(viaDefault.source).toBe("default");
       expect(viaDefault.config.segments).toEqual(DEFAULT_SEGMENTS);
-    } finally {
-      process.env.HOME = oldHome;
-    }
-  });
-
-  it("reads legacy filter field and migrates to extensionSegments", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const globalSettings = join(globalHome, ".pi/agent/settings.json");
-
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    writeFileSync(
-      globalSettings,
-      JSON.stringify({
-        statusLine: {
-          segments: ["model"],
-          filter: { mode: "all", hidden: ["old-key"] },
-        },
-      }),
-      "utf8",
-    );
-
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
-    try {
-      const result = loadConfig({ cwd: project });
-      expect(result.config.extensionSegments).toEqual({
-        hidden: ["old-key"],
-      });
     } finally {
       process.env.HOME = oldHome;
     }

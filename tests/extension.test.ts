@@ -127,7 +127,7 @@ describe("extension wiring", () => {
     writeFileSync(
       projectSettings,
       JSON.stringify({
-        statusLine: { segments: ["model"], filter: { mode: "all", hidden: [] } },
+        statusLine: { segments: ["model"], extensionSegments: { hidden: [] } },
       }),
       "utf8",
     );
@@ -182,7 +182,7 @@ describe("extension wiring", () => {
         JSON.stringify({
           statusLine: {
             segments: ["project-name"],
-            filter: { mode: "all", hidden: [] },
+            extensionSegments: { hidden: [] },
           },
         }),
         "utf8",

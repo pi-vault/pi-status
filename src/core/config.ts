@@ -80,21 +80,6 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { hidden: [] };
   }
-  const mode = (input as { mode?: unknown }).mode;
-
-  // Legacy { mode: "all", hidden: [...] } — keep hidden list
-  if (mode === "all") {
-    return {
-      hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden),
-    };
-  }
-
-  // Legacy { mode: "only", shown: [...] } — can't invert, reset to show all
-  if (mode === "only") {
-    return { hidden: [] };
-  }
-
-  // New shape { hidden: [...] }
   return {
     hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden),
   };
@@ -129,9 +114,8 @@ function normalizePiStatus(input: unknown): PiStatusConfig {
     return cloneDefaultConfig();
   }
   const segments = normalizeSegments((input as { segments?: unknown }).segments);
-  const raw = input as { extensionSegments?: unknown; filter?: unknown };
   const extensionSegments = normalizeExtensionSegments(
-    raw.extensionSegments ?? raw.filter,
+    (input as { extensionSegments?: unknown }).extensionSegments,
   );
   return {
     segments: segments.length > 0 ? segments : [...DEFAULT_SEGMENTS],
