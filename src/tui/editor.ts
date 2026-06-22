@@ -403,6 +403,7 @@ export function createStatusLineEditor(options: {
     const [item] = copy.splice(idx, 1);
     copy.splice(next, 0, item);
     enabledSegments = copy;
+    selected += delta;
   }
 
   function toConfig(): PiStatusConfig {

@@ -441,6 +441,21 @@ describe("statusline editor interactions", () => {
     expect(saved?.segments).toEqual(["current-dir", "model", "git-branch"]);
   });
 
+  it("keeps the selection indicator on the moved item after reorder", () => {
+    const { editor } = makeEditor({
+      config: makeConfig({ segments: ["model", "current-dir", "git-branch"] }),
+      theme: HIGHLIGHT_THEME,
+    });
+    editor.handleInput(DOWN); // select current-dir (index 1)
+    expect(activeInteractiveRow(editor.render(200))).toContain("Current Dir");
+
+    editor.handleInput(LEFT); // move current-dir before model
+    expect(activeInteractiveRow(editor.render(200))).toContain("Current Dir");
+
+    editor.handleInput(RIGHT); // move current-dir back after model
+    expect(activeInteractiveRow(editor.render(200))).toContain("Current Dir");
+  });
+
   it("keeps left/right as no-ops for disabled segments", () => {
     const { editor, done } = makeEditor({
       config: makeConfig({ segments: ["current-dir"] }),
