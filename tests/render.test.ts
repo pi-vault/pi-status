@@ -584,7 +584,7 @@ describe("formatSegment — session-id", () => {
 });
 
 describe("formatSegment — five-hour-limit", () => {
-  it("calculates remaining percent with success color", () => {
+  it("formats as mixed-color with dim prefix/suffix and colored percent", () => {
     const result = formatSegment(
       "five-hour-limit",
       segmentInput({
@@ -599,10 +599,31 @@ describe("formatSegment — five-hour-limit", () => {
       }),
       identityTheme,
     );
-    expect(result).toEqual(["5h 70% left", "success"]);
+    expect(result).toEqual(["5h 70% left", null]);
   });
 
-  it("returns warning color when usage is between 70-89%", () => {
+  it("applies success color to percent when usage < 70%", () => {
+    const result = formatSegment(
+      "five-hour-limit",
+      segmentInput({
+        usageState: {
+          compatibility: {
+            currentLiveProviderSnapshot: {
+              providerId: "anthropic",
+              windows: [{ key: "fiveHour", usedPercent: 30 }],
+            },
+          },
+        },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[success:70%]");
+    expect(result?.[0]).toContain("[dim:5h ]");
+    expect(result?.[0]).toContain("[dim: left]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("applies warning color when usage is 70-89%", () => {
     const result = formatSegment(
       "five-hour-limit",
       segmentInput({
@@ -615,12 +636,13 @@ describe("formatSegment — five-hour-limit", () => {
           },
         },
       }),
-      identityTheme,
+      markerTheme,
     );
-    expect(result).toEqual(["5h 25% left", "warning"]);
+    expect(result?.[0]).toContain("[warning:25%]");
+    expect(result?.[1]).toBeNull();
   });
 
-  it("returns error color when usage is 90%+", () => {
+  it("applies error color when usage is 90%+", () => {
     const result = formatSegment(
       "five-hour-limit",
       segmentInput({
@@ -633,9 +655,10 @@ describe("formatSegment — five-hour-limit", () => {
           },
         },
       }),
-      identityTheme,
+      markerTheme,
     );
-    expect(result).toEqual(["5h 5% left", "error"]);
+    expect(result?.[0]).toContain("[error:5%]");
+    expect(result?.[1]).toBeNull();
   });
 
   it("returns null when no fiveHour window exists", () => {
@@ -715,12 +738,12 @@ describe("formatSegment — five-hour-limit", () => {
       }),
       identityTheme,
     );
-    expect(result).toEqual(["5h 0% left", "error"]);
+    expect(result).toEqual(["5h 0% left", null]);
   });
 });
 
 describe("formatSegment — weekly-limit", () => {
-  it("calculates remaining percent with success color", () => {
+  it("formats as mixed-color with dim prefix/suffix and colored percent", () => {
     const result = formatSegment(
       "weekly-limit",
       segmentInput({
@@ -735,7 +758,28 @@ describe("formatSegment — weekly-limit", () => {
       }),
       identityTheme,
     );
-    expect(result).toEqual(["wk 80% left", "success"]);
+    expect(result).toEqual(["wk 80% left", null]);
+  });
+
+  it("applies success color to percent when usage < 70%", () => {
+    const result = formatSegment(
+      "weekly-limit",
+      segmentInput({
+        usageState: {
+          compatibility: {
+            currentLiveProviderSnapshot: {
+              providerId: "anthropic",
+              windows: [{ key: "weekly", usedPercent: 20 }],
+            },
+          },
+        },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[success:80%]");
+    expect(result?.[0]).toContain("[dim:wk ]");
+    expect(result?.[0]).toContain("[dim: left]");
+    expect(result?.[1]).toBeNull();
   });
 
   it("returns null when no weekly window exists", () => {
