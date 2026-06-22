@@ -100,7 +100,7 @@ describe("formatSegment — context-used", () => {
   it("returns null when contextWindow is undefined", () => {
     const result = formatSegment(
       "context-used",
-      segmentInput({ contextUsage: { percent: 25 } }),
+      segmentInput({ contextUsage: { tokens: 50000, percent: 25 } }),
       identityTheme,
     );
     expect(result).toBeNull();
@@ -147,7 +147,19 @@ function contextUsedColor(percent: number): "success" | "warning" | "error" {
 }
 ```
 
-- [ ] **Step 2: Rewrite the `context-used` case in `formatSegment`**
+- [ ] **Step 2: Rename `_theme` parameter to `theme` in `formatSegment`**
+
+In the `formatSegment` function signature, rename the unused `_theme` parameter to `theme` so it can be referenced in the new implementation:
+
+```ts
+export function formatSegment(
+  id: StatusLineSegmentId,
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): [text: string, color: FooterRenderColor | null] | null {
+```
+
+- [ ] **Step 3: Rewrite the `context-used` case in `formatSegment`**
 
 Replace the existing `case "context-used"` block:
 
