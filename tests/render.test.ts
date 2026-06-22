@@ -405,7 +405,7 @@ describe("formatSegment — context-used", () => {
 });
 
 describe("formatSegment — context-remaining", () => {
-  it("calculates remaining tokens and formats compactly", () => {
+  it("formats as remaining / window (remainingPercent%)", () => {
     const result = formatSegment(
       "context-remaining",
       segmentInput({
@@ -413,7 +413,55 @@ describe("formatSegment — context-remaining", () => {
       }),
       identityTheme,
     );
-    expect(result).toEqual(["150k left", "success"]);
+    expect(result).toEqual(["150k / 200k (75%)", null]);
+  });
+
+  it("applies success color when remaining percent is above 40%", () => {
+    const result = formatSegment(
+      "context-remaining",
+      segmentInput({
+        contextUsage: { tokens: 50000, contextWindow: 200000, percent: 25 },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[success:150k]");
+    expect(result?.[0]).toContain("[success:75%]");
+    expect(result?.[0]).toContain("[dim:200k]");
+  });
+
+  it("applies warning color when remaining percent is between 21-40%", () => {
+    const result = formatSegment(
+      "context-remaining",
+      segmentInput({
+        contextUsage: { tokens: 140000, contextWindow: 200000, percent: 70 },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[warning:60k]");
+    expect(result?.[0]).toContain("[warning:30%]");
+  });
+
+  it("applies error color when remaining percent is 20% or less", () => {
+    const result = formatSegment(
+      "context-remaining",
+      segmentInput({
+        contextUsage: { tokens: 180000, contextWindow: 200000, percent: 90 },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[error:20k]");
+    expect(result?.[0]).toContain("[error:10%]");
+  });
+
+  it("clamps remaining to zero when tokens exceed window", () => {
+    const result = formatSegment(
+      "context-remaining",
+      segmentInput({
+        contextUsage: { tokens: 250000, contextWindow: 200000, percent: 100 },
+      }),
+      identityTheme,
+    );
+    expect(result).toEqual(["0 / 200k (0%)", null]);
   });
 
   it("returns null when tokens is null", () => {
@@ -447,15 +495,13 @@ describe("formatSegment — context-remaining", () => {
     expect(result).toBeNull();
   });
 
-  it("clamps remaining to zero when tokens exceed window", () => {
+  it("returns null when contextUsage is undefined", () => {
     const result = formatSegment(
       "context-remaining",
-      segmentInput({
-        contextUsage: { tokens: 250000, contextWindow: 200000, percent: 100 },
-      }),
+      segmentInput(),
       identityTheme,
     );
-    expect(result).toEqual(["0 left", "error"]);
+    expect(result).toBeNull();
   });
 });
 

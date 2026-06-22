@@ -109,19 +109,18 @@ export function findProjectRootLabel(cwd: string): string | null {
   }
 }
 
-function contextColor(
-  percent: number | null | undefined,
-): "success" | "warning" | "error" | "dim" {
-  if (percent === undefined || percent === null) return "dim";
-  if (percent < 70) return "success";
-  if (percent < 90) return "warning";
-  return "error";
-}
-
 function contextUsedColor(percent: number): "success" | "warning" | "error" {
   if (percent < 60) return "success";
   if (percent < 80) return "warning";
   return "error";
+}
+
+function contextRemainingColor(
+  remainingPercent: number,
+): "success" | "warning" | "error" {
+  if (remainingPercent <= 20) return "error";
+  if (remainingPercent <= 40) return "warning";
+  return "success";
 }
 
 function getRateWindow(
@@ -227,17 +226,18 @@ export function formatSegment(
       ];
     }
     case "context-remaining": {
-      const total = input.contextUsage?.tokens;
-      const window = input.contextUsage?.contextWindow;
+      const tokens = input.contextUsage?.tokens;
+      const ctxWindow = input.contextUsage?.contextWindow;
       const percent = input.contextUsage?.percent;
-      if (
-        total === undefined || total === null || window === undefined ||
-        percent === undefined || percent === null
-      ) {
-        return null;
-      }
-      const remaining = Math.max(0, window - total);
-      return [`${formatCompactNumber(remaining)} left`, contextColor(percent)];
+      if (tokens == null || ctxWindow === undefined || percent == null) return null;
+      const remaining = Math.max(0, ctxWindow - tokens);
+      const remainingPercent = Math.max(0, Math.round(100 - percent));
+      const c = contextRemainingColor(remainingPercent);
+      const dim = (s: string) => theme.fg("dim", s);
+      return [
+        `${theme.fg(c, formatCompactNumber(remaining))}${dim(" / ")}${dim(formatCompactNumber(ctxWindow))}${dim(" (")}${theme.fg(c, `${remainingPercent}%`)}${dim(")")}`,
+        null,
+      ];
     }
     case "used-tokens": {
       const value = input.branchTotals?.totalTokens;
