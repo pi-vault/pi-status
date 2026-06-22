@@ -118,6 +118,12 @@ function contextColor(
   return "error";
 }
 
+function contextUsedColor(percent: number): "success" | "warning" | "error" {
+  if (percent < 60) return "success";
+  if (percent < 80) return "warning";
+  return "error";
+}
+
 function getRateWindow(
   input: FooterRenderInput,
   key: "fiveHour" | "weekly",
@@ -185,7 +191,7 @@ function formatExtensionStatuses(
 export function formatSegment(
   id: StatusLineSegmentId,
   input: FooterRenderInput,
-  _theme: ThemeLike,
+  theme: ThemeLike,
 ): [text: string, color: FooterRenderColor | null] | null {
   switch (id) {
     case "model": {
@@ -209,10 +215,16 @@ export function formatSegment(
     case "run-state":
       return [input.runState, input.runState === "idle" ? "dim" : "accent"];
     case "context-used": {
+      const tokens = input.contextUsage?.tokens;
+      const ctxWindow = input.contextUsage?.contextWindow;
       const percent = input.contextUsage?.percent;
-      return percent === undefined || percent === null
-        ? null
-        : [`${Math.round(percent)}% ctx`, contextColor(percent)];
+      if (tokens == null || ctxWindow === undefined || percent == null) return null;
+      const c = contextUsedColor(percent);
+      const dim = (s: string) => theme.fg("dim", s);
+      return [
+        `${theme.fg(c, formatCompactNumber(tokens))}${dim(" / ")}${dim(formatCompactNumber(ctxWindow))}${dim(" (")}${theme.fg(c, `${Math.round(percent)}%`)}${dim(")")}`,
+        null,
+      ];
     }
     case "context-remaining": {
       const total = input.contextUsage?.tokens;

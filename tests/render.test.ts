@@ -16,6 +16,9 @@ import { withDefaults } from "./test-helpers.ts";
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
 const identityTheme: ThemeLike = { fg: (_c, t) => t };
 
+/** Theme that tags colored text — isolates color verification from rendering. */
+const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]` };
+
 /** Build a minimal FooterRenderInput with sensible defaults; override only the fields under test. */
 function segmentInput(
   overrides?: Partial<FooterRenderInput>,
@@ -273,37 +276,123 @@ describe("formatSegment — run-state", () => {
 });
 
 describe("formatSegment — context-used", () => {
-  it("returns rounded percent with success color when under 70%", () => {
+  it("formats as tokens / window (percent%)", () => {
     const result = formatSegment(
       "context-used",
-      segmentInput({ contextUsage: { percent: 45.7 } }),
+      segmentInput({
+        contextUsage: { tokens: 50000, contextWindow: 200000, percent: 25 },
+      }),
       identityTheme,
     );
-    expect(result).toEqual(["46% ctx", "success"]);
+    expect(result).toEqual(["50k / 200k (25%)", null]);
   });
 
-  it("returns warning color when percent is between 70-89", () => {
+  it("applies success color to tokens and percent when usage is under 60%", () => {
     const result = formatSegment(
       "context-used",
-      segmentInput({ contextUsage: { percent: 75 } }),
-      identityTheme,
+      segmentInput({
+        contextUsage: { tokens: 50000, contextWindow: 200000, percent: 25 },
+      }),
+      markerTheme,
     );
-    expect(result).toEqual(["75% ctx", "warning"]);
+    expect(result?.[0]).toContain("[success:50k]");
+    expect(result?.[0]).toContain("[success:25%]");
+    expect(result?.[0]).toContain("[dim:200k]");
+    expect(result?.[0]).toContain("[dim: / ]");
+    expect(result?.[0]).toContain("[dim: (]");
+    expect(result?.[0]).toContain("[dim:)]");
   });
 
-  it("returns error color when percent is 90+", () => {
+  it("applies warning color when percent is between 60-79", () => {
     const result = formatSegment(
       "context-used",
-      segmentInput({ contextUsage: { percent: 95 } }),
+      segmentInput({
+        contextUsage: { tokens: 150000, contextWindow: 200000, percent: 75 },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[warning:150k]");
+    expect(result?.[0]).toContain("[warning:75%]");
+  });
+
+  it("applies error color when percent is 80+", () => {
+    const result = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: 190000, contextWindow: 200000, percent: 95 },
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toContain("[error:190k]");
+    expect(result?.[0]).toContain("[error:95%]");
+  });
+
+  it("switches from success to warning at exactly 60%", () => {
+    const at59 = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: 118000, contextWindow: 200000, percent: 59 },
+      }),
+      markerTheme,
+    );
+    expect(at59?.[0]).toContain("[success:118k]");
+
+    const at60 = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: 120000, contextWindow: 200000, percent: 60 },
+      }),
+      markerTheme,
+    );
+    expect(at60?.[0]).toContain("[warning:120k]");
+  });
+
+  it("switches from warning to error at exactly 80%", () => {
+    const at79 = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: 158000, contextWindow: 200000, percent: 79 },
+      }),
+      markerTheme,
+    );
+    expect(at79?.[0]).toContain("[warning:158k]");
+
+    const at80 = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: 160000, contextWindow: 200000, percent: 80 },
+      }),
+      markerTheme,
+    );
+    expect(at80?.[0]).toContain("[error:160k]");
+  });
+
+  it("returns null when tokens is null", () => {
+    const result = formatSegment(
+      "context-used",
+      segmentInput({
+        contextUsage: { tokens: null, contextWindow: 200000, percent: 25 },
+      }),
       identityTheme,
     );
-    expect(result).toEqual(["95% ctx", "error"]);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when contextWindow is undefined", () => {
+    const result = formatSegment(
+      "context-used",
+      segmentInput({ contextUsage: { tokens: 50000, percent: 25 } }),
+      identityTheme,
+    );
+    expect(result).toBeNull();
   });
 
   it("returns null when percent is null", () => {
     const result = formatSegment(
       "context-used",
-      segmentInput({ contextUsage: { percent: null } }),
+      segmentInput({
+        contextUsage: { tokens: 50000, contextWindow: 200000, percent: null },
+      }),
       identityTheme,
     );
     expect(result).toBeNull();
