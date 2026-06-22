@@ -81,7 +81,7 @@ function rowLines(lines: string[]): string[] {
 }
 
 function activeInteractiveRow(lines: string[]): string | undefined {
-  return rowLines(lines).find((line) => line.includes("▸"));
+  return rowLines(lines).find((line) => line.includes("\u25B8"));
 }
 
 describe("statusline editor shell", () => {
@@ -94,7 +94,7 @@ describe("statusline editor shell", () => {
       "Select which items to display in the status line.",
       "",
       "Type to search",
-      "▸ ",
+      "\u25B8 ",
     ]);
   });
 
@@ -103,7 +103,7 @@ describe("statusline editor shell", () => {
     editor.handleInput("m");
     editor.handleInput("o");
     editor.handleInput("d");
-    expect(renderLines(editor)[4]).toBe("▸ mod");
+    expect(renderLines(editor)[4]).toBe("\u25B8 mod");
   });
 
   it("always renders the preview line and help line at the bottom", () => {
@@ -156,7 +156,7 @@ describe("statusline editor query input", () => {
     editor.handleInput("B");
     editor.handleInput("1");
     editor.handleInput(SPACE);
-    expect(renderLines(editor)[4]).toBe("▸ aB1");
+    expect(renderLines(editor)[4]).toBe("\u25B8 aB1");
   });
 
   it("removes the last character on backspace", () => {
@@ -165,7 +165,7 @@ describe("statusline editor query input", () => {
     editor.handleInput("b");
     editor.handleInput("c");
     editor.handleInput(BACKSPACE);
-    expect(renderLines(editor)[4]).toBe("▸ ab");
+    expect(renderLines(editor)[4]).toBe("\u25B8 ab");
   });
 });
 
@@ -613,7 +613,7 @@ describe("statusline editor live preview and layout", () => {
     const target = lines.find((line) => line.includes("Model + Reasoning"));
 
     expect(target).toBe(
-      "▸ [x] Model + Reasoning (1)     Current model name with reasoning level",
+      "\u25B8 [\u2022] Model + Reasoning (1)     Current model name with reasoning level",
     );
   });
 
@@ -622,7 +622,7 @@ describe("statusline editor live preview and layout", () => {
     const lines = renderLines(editor, 40);
     const target = lines.find((line) => line.includes("Model + Reasoning"));
 
-    expect(target).toBe("▸ [x] Model + Reasoning (1) - Current...");
+    expect(target).toBe("\u25B8 [\u2022] Model + Reasoning (1) - Current...");
   });
 
   it("never renders lines wider than the requested width", () => {
@@ -663,7 +663,7 @@ describe("statusline editor width hardening", () => {
     const lines = renderLines(editor, 200);
     const target = lines.find((line) => line.includes("Model + Reasoning"));
     expect(target).toBe(
-      "▸ [x] Model + Reasoning (1)     Current model name with reasoning level",
+      "\u25B8 [\u2022] Model + Reasoning (1)     Current model name with reasoning level",
     );
   });
 
@@ -671,7 +671,7 @@ describe("statusline editor width hardening", () => {
     const { editor } = makeEditor();
     const lines = renderLines(editor, 30);
     const target = lines.find((line) => line.includes("Model + Reasoning"));
-    expect(target).toBe("▸ [x] Model + Reasoning... - .");
+    expect(target).toBe("\u25B8 [\u2022] Model + Reasoning... - .");
   });
 
   it("renders the preview with the full requested width without the extra two-column loss", () => {

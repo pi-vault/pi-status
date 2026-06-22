@@ -181,7 +181,7 @@ function renderRowLine(
 ): string {
   if (width < 1) return "";
 
-  const markerRaw = row.selected ? "▸" : " ";
+  const markerRaw = row.selected ? "\u25B8" : " ";
   const marker = row.selected ? theme.fg("accent", markerRaw) : markerRaw;
   const prefixRaw = `${markerRaw} ${row.checkbox} `;
   const prefixWidth = visibleWidth(prefixRaw);
@@ -484,7 +484,7 @@ export function createStatusLineEditor(options: {
       lines.push(truncateToWidth(options.theme.dim(SHELL_SUBTITLE), width));
       lines.push(truncateToWidth("", width));
       lines.push(truncateToWidth(options.theme.dim(SHELL_PLACEHOLDER), width));
-      lines.push(truncateToWidth(`▸ ${query}`, width));
+      lines.push(truncateToWidth(`\u25B8 ${query}`, width));
 
       for (const renderRow of renderRows) {
         if (renderRow.type === "header") {
@@ -503,7 +503,7 @@ export function createStatusLineEditor(options: {
         const row = renderRow.row;
         const selectedRow = renderRow.interactiveIndex === selected;
         if (row.type === "segment") {
-          const enabled = isEnabledSegment(row.id) ? "[x]" : "[ ]";
+          const enabled = isEnabledSegment(row.id) ? "[\u2022]" : "[ ]";
           const order = isEnabledSegment(row.id)
             ? ` (${enabledSegments.indexOf(row.id) + 1})`
             : "";
@@ -528,7 +528,7 @@ export function createStatusLineEditor(options: {
             renderRowLine(
               {
                 selected: selectedRow,
-                checkbox: shown.has(row.key) ? "[x]" : "[ ]",
+                checkbox: shown.has(row.key) ? "[\u2022]" : "[ ]",
                 labelWithOrder: row.key,
                 description: STATUS_ROW_DESCRIPTION,
               },
@@ -542,7 +542,7 @@ export function createStatusLineEditor(options: {
           renderRowLine(
             {
               selected: selectedRow,
-              checkbox: newPolicyShown ? "[x]" : "[ ]",
+              checkbox: newPolicyShown ? "[\u2022]" : "[ ]",
               labelWithOrder: POLICY_ROW_LABEL,
               description: POLICY_ROW_DESCRIPTION,
             },
