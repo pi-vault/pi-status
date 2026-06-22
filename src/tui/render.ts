@@ -13,10 +13,16 @@ export type FooterRenderColor =
   | "dim"
   | "success"
   | "warning"
-  | "error";
+  | "error"
+  | "thinkingOff"
+  | "thinkingMinimal"
+  | "thinkingLow"
+  | "thinkingMedium"
+  | "thinkingHigh";
 
 export type ThemeLike = {
   fg: (color: FooterRenderColor, text: string) => string;
+  rainbow: (text: string) => string;
 };
 
 export type ModelLike = {

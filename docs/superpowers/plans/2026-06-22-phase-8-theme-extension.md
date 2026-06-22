@@ -19,6 +19,7 @@
 ### Task 8.1: Write failing tests for theme extension
 
 **Files:**
+
 - Modify: `tests/render.test.ts`
 
 - [ ] **Step 1: Add rainbow to the test themes**
@@ -26,6 +27,7 @@
 In `tests/render.test.ts`, update the `identityTheme` and `markerTheme` declarations to include `rainbow`:
 
 Replace:
+
 ```ts
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
 const identityTheme: ThemeLike = { fg: (_c, t) => t };
@@ -35,12 +37,16 @@ const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]` };
 ```
 
 With:
+
 ```ts
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
 const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };
 
 /** Theme that tags colored text — isolates color verification from rendering. */
-const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]`, rainbow: (t) => `[rainbow:${t}]` };
+const markerTheme: ThemeLike = {
+  fg: (c, t) => `[${c}:${t}]`,
+  rainbow: (t) => `[rainbow:${t}]`,
+};
 ```
 
 - [ ] **Step 2: Add a test for thinking-level colors passing through**
@@ -80,6 +86,7 @@ Expected: TypeScript compilation fails because `ThemeLike` doesn't have `rainbow
 ### Task 8.2: Extend FooterRenderColor and ThemeLike types
 
 **Files:**
+
 - Modify: `src/tui/render.ts`
 
 - [ ] **Step 1: Widen FooterRenderColor**
@@ -122,6 +129,7 @@ Expected: May have errors in theme.ts if `StatusLineTheme` doesn't match yet, bu
 ### Task 8.3: Update StatusLineTheme and implement rainbow
 
 **Files:**
+
 - Modify: `src/tui/theme.ts`
 
 - [ ] **Step 1: Rewrite `src/tui/theme.ts` entirely**
@@ -148,12 +156,20 @@ type PiThemeLike = {
 function isPiThemeLike(value: unknown): value is PiThemeLike {
   if (!value || typeof value !== "object") return false;
   const candidate = value as { fg?: unknown; bold?: unknown };
-  return typeof candidate.fg === "function" && typeof candidate.bold === "function";
+  return (
+    typeof candidate.fg === "function" && typeof candidate.bold === "function"
+  );
 }
 
 const RAINBOW_COLORS = [
-  "#b281d6", "#d787af", "#febc38", "#e4c00f",
-  "#89d281", "#00afaf", "#178fb9", "#b281d6",
+  "#b281d6",
+  "#d787af",
+  "#febc38",
+  "#e4c00f",
+  "#89d281",
+  "#00afaf",
+  "#178fb9",
+  "#b281d6",
 ];
 
 function hexToAnsi(hex: string): string {
@@ -171,7 +187,8 @@ function rainbow(text: string): string {
     if (char === " " || char === ":") {
       result += char;
     } else {
-      result += hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
+      result +=
+        hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
       colorIndex++;
     }
   }
@@ -212,34 +229,95 @@ Expected: All types compile cleanly.
 
 ---
 
-### Task 8.4: Update test-helpers and verify
+### Task 8.4: Update callers and test-helpers
 
 **Files:**
+
+- Modify: `src/index.ts`
+- Modify: `tests/render.test.ts`
 - Modify: `tests/test-helpers.ts`
 
-- [ ] **Step 1: Update renderWithFactory theme mock**
+- [ ] **Step 1: Wrap theme with `fromPiTheme` in `src/index.ts`**
+
+The `FooterFactory` receives a raw Pi theme (`{ fg }`) and passes it directly to `buildFooterLine()`. Now that `ThemeLike` requires `rainbow`, we must convert it first.
+
+In `src/index.ts`, add to the existing imports from `./tui/theme.ts`:
+
+```ts
+import { fromPiTheme } from "./tui/theme.ts";
+```
+
+Then in the `render()` method of the footer factory (around line 113), replace:
+
+```ts
+const line = buildFooterLine(
+  {
+    ...snapshot,
+    extensionSegments: state.config.extensionSegments,
+    segments: state.config.segments,
+  },
+  theme,
+  width,
+);
+```
+
+With:
+
+```ts
+const line = buildFooterLine(
+  {
+    ...snapshot,
+    extensionSegments: state.config.extensionSegments,
+    segments: state.config.segments,
+  },
+  fromPiTheme(theme),
+  width,
+);
+```
+
+Note: When extension tests pass `{ fg }` without `bold`, `fromPiTheme` returns `noTheme` (identity for all methods), preserving existing test behavior.
+
+- [ ] **Step 2: Add `rainbow` to inline themes in `tests/render.test.ts`**
+
+Three inline `{ fg: (_c, t) => t }` objects are passed directly to `buildFooterLine`. Add `rainbow`:
+
+Replace each occurrence (lines ~78, ~92, ~118):
+
+```ts
+      { fg: (_c, t) => t },
+```
+
+With:
+
+```ts
+      { fg: (_c, t) => t, rainbow: (t) => t },
+```
+
+- [ ] **Step 3: Update renderWithFactory theme mock in `tests/test-helpers.ts`**
 
 In `tests/test-helpers.ts`, the `renderWithFactory` function has an inline theme: `{ fg: (_c: string, t: string) => t }`. Add rainbow:
 
 Replace:
+
 ```ts
     { fg: (_c: string, t: string) => t },
 ```
 
 With:
+
 ```ts
     { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
 ```
 
-- [ ] **Step 2: Run full verification**
+- [ ] **Step 4: Run full verification**
 
 Run: `pnpm check`
 
 Expected: Lint, typecheck, and all tests pass.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/tui/render.ts src/tui/theme.ts tests/render.test.ts tests/test-helpers.ts
+git add src/index.ts src/tui/render.ts src/tui/theme.ts tests/render.test.ts tests/test-helpers.ts
 git commit -m "feat: extend theme with thinking-level colors and rainbow"
 ```

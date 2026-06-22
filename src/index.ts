@@ -116,7 +116,7 @@ export default function createExtension(pi: ExtensionAPI): void {
               extensionSegments: state.config.extensionSegments,
               segments: state.config.segments,
             },
-            theme,
+            fromPiTheme(theme),
             width,
           );
           return [line];

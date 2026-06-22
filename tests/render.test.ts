@@ -14,10 +14,10 @@ import {
 import { withDefaults } from "./test-helpers.ts";
 
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
-const identityTheme: ThemeLike = { fg: (_c, t) => t };
+const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };
 
 /** Theme that tags colored text — isolates color verification from rendering. */
-const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]` };
+const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]`, rainbow: (t) => `[rainbow:${t}]` };
 
 /** Build a minimal FooterRenderInput with sensible defaults; override only the fields under test. */
 function segmentInput(
@@ -75,7 +75,7 @@ describe("render", () => {
         runState: "idle",
         segments: ["project-name"],
       }),
-      { fg: (_c, t) => t },
+      { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
     expect(line).toBe("repo2");
@@ -89,7 +89,7 @@ describe("render", () => {
         thinkingLevel: "medium",
         runState: "idle",
       }),
-      { fg: (_c, t) => t },
+      { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
     expect(line).toContain("GPT-5 [med]");
@@ -115,7 +115,7 @@ describe("render", () => {
           },
         },
       }),
-      { fg: (_c, t) => t },
+      { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
     expect(line).toContain("5h 60% left");
@@ -145,6 +145,26 @@ describe("formatSegment — model", () => {
   it("returns null when model is undefined", () => {
     const result = formatSegment("model", segmentInput(), identityTheme);
     expect(result).toBeNull();
+  });
+});
+
+describe("theme — thinking-level colors", () => {
+  it("accepts thinking-level color names in fg()", () => {
+    const result = markerTheme.fg("thinkingMinimal", "test");
+    expect(result).toBe("[thinkingMinimal:test]");
+  });
+
+  it("accepts thinkingHigh color name", () => {
+    const result = markerTheme.fg("thinkingHigh", "test");
+    expect(result).toBe("[thinkingHigh:test]");
+  });
+
+  it("rainbow returns marker in markerTheme", () => {
+    expect(markerTheme.rainbow("[xhigh]")).toBe("[rainbow:[xhigh]]");
+  });
+
+  it("rainbow returns text unchanged in identityTheme", () => {
+    expect(identityTheme.rainbow("[xhigh]")).toBe("[xhigh]");
   });
 });
 
