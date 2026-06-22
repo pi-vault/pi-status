@@ -25,7 +25,7 @@ function segmentInput(
     thinkingLevel: "medium",
     runState: "idle",
     segments: [],
-    filter: { mode: "all", hidden: [] },
+    extensionSegments: { hidden: [] },
     ...overrides,
   };
 }
@@ -637,7 +637,7 @@ describe("buildFooterLine — extension statuses", () => {
             ["alpha", "running"],
             ["beta", "paused"],
           ]),
-          filter: { mode: "all", hidden: [] },
+          extensionSegments: { hidden: [] },
         }),
       },
       identityTheme,
@@ -657,7 +657,7 @@ describe("buildFooterLine — extension statuses", () => {
             ["alpha", "running"],
             ["beta", "paused"],
           ]),
-          filter: { mode: "all", hidden: ["alpha"] },
+          extensionSegments: { hidden: ["alpha"] },
         }),
       },
       identityTheme,
@@ -667,7 +667,7 @@ describe("buildFooterLine — extension statuses", () => {
     expect(line).toContain("paused");
   });
 
-  it("respects the only filter", () => {
+  it("shows only non-hidden statuses", () => {
     const line = buildFooterLine(
       {
         ...segmentInput({
@@ -676,7 +676,7 @@ describe("buildFooterLine — extension statuses", () => {
             ["alpha", "running"],
             ["beta", "paused"],
           ]),
-          filter: { mode: "only", shown: ["alpha"] },
+          extensionSegments: { hidden: ["beta"] },
         }),
       },
       identityTheme,
@@ -706,7 +706,7 @@ describe("buildFooterLine — extension statuses", () => {
         ...segmentInput({
           segments: ["run-state"],
           extensionStatuses: new Map([["alpha", "running"]]),
-          filter: { mode: "all", hidden: ["alpha"] },
+          extensionSegments: { hidden: ["alpha"] },
         }),
       },
       identityTheme,
@@ -721,7 +721,7 @@ describe("buildFooterLine — extension statuses", () => {
         ...segmentInput({
           segments: [],
           extensionStatuses: new Map([["alpha", "alpha: running"]]),
-          filter: { mode: "all", hidden: [] },
+          extensionSegments: { hidden: [] },
         }),
       },
       identityTheme,

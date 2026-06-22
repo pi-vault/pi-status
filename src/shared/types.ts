@@ -14,13 +14,11 @@ export type StatusLineSegmentId =
   | "five-hour-limit"
   | "weekly-limit";
 
-export type StatusFilter =
-  | { mode: "all"; hidden: string[] }
-  | { mode: "only"; shown: string[] };
+export type ExtensionSegments = { hidden: string[] };
 
 export type PiStatusConfig = {
   segments: StatusLineSegmentId[];
-  filter: StatusFilter;
+  extensionSegments: ExtensionSegments;
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [

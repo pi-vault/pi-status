@@ -59,7 +59,7 @@ function deriveRunState(
 
 export function buildSnapshot(
   input: SnapshotInput,
-): Omit<FooterRenderInput, "segments" | "filter"> {
+): Omit<FooterRenderInput, "segments" | "extensionSegments"> {
   return {
     model: input.model,
     cwd: input.cwd,

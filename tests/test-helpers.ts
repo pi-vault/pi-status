@@ -2,14 +2,14 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { DEFAULT_SEGMENTS, type FooterRenderInput } from "../src/tui/render.ts";
 
 export function withDefaults(
-  input: Omit<FooterRenderInput, "filter" | "segments"> & {
+  input: Omit<FooterRenderInput, "extensionSegments" | "segments"> & {
     segments?: FooterRenderInput["segments"];
   },
 ): FooterRenderInput {
   return {
     ...input,
     segments: input.segments ?? [...DEFAULT_SEGMENTS],
-    filter: { mode: "all", hidden: [] },
+    extensionSegments: { hidden: [] },
   };
 }
 
