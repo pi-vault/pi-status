@@ -7,7 +7,6 @@ export type StatusLineSegmentId =
   | "run-state"
   | "context-remaining"
   | "context-used"
-  | "context-window-size"
   | "used-tokens"
   | "total-input-tokens"
   | "total-output-tokens"
@@ -34,7 +33,6 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "run-state",
   "context-remaining",
   "context-used",
-  "context-window-size",
   "used-tokens",
   "total-input-tokens",
   "total-output-tokens",
