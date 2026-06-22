@@ -31,6 +31,10 @@ describe("noTheme", () => {
   it("returns the original text from dim", () => {
     expect(noTheme.dim("faint")).toBe("faint");
   });
+
+  it("returns the original text from rainbow", () => {
+    expect(noTheme.rainbow("hi")).toBe("hi");
+  });
 });
 
 describe("fromPiTheme", () => {
@@ -107,5 +111,61 @@ describe("fromPiTheme", () => {
     const second = adapted.fg("accent", "second");
 
     expect(second).toBe("[NEW:second]");
+  });
+
+  it("rainbow applies per-character ANSI colors and ends with reset", () => {
+    const adapted = fromPiTheme(makeSpyTheme());
+    const result = adapted.rainbow("ab");
+    const ESC = String.fromCharCode(27);
+    // Each character gets ESC[38;2;R;G;Bm prefix
+    expect(result).toContain(`${ESC}[38;2;`);
+    expect(result).toContain("a");
+    expect(result).toContain("b");
+    expect(result.endsWith(`${ESC}[0m`)).toBe(true);
+  });
+
+  it("rainbow skips spaces and colons without coloring them", () => {
+    const adapted = fromPiTheme(makeSpyTheme());
+    const result = adapted.rainbow("a b:c");
+    const ESC = String.fromCharCode(27);
+    // Split on ANSI sequences to check structure
+    const parts = result.split(new RegExp(`${ESC}\\[[^m]*m`));
+    // Space and colon should appear as standalone characters (not preceded by color)
+    expect(parts.some((p) => p.includes(" "))).toBe(true);
+    expect(parts.some((p) => p.includes(":"))).toBe(true);
+  });
+
+  it("rainbow cycles through the color palette", () => {
+    const adapted = fromPiTheme(makeSpyTheme());
+    const result = adapted.rainbow("abcdefghi");
+    const ESC = String.fromCharCode(27);
+    // First color: #b281d6 → rgb(178,129,214)
+    expect(result).toContain(`${ESC}[38;2;178;129;214m`);
+    // Second color: #d787af → rgb(215,135,175)
+    expect(result).toContain(`${ESC}[38;2;215;135;175m`);
+    // Third color: #febc38 → rgb(254,188,56)
+    expect(result).toContain(`${ESC}[38;2;254;188;56m`);
+    // Palette is 8 entries; 9th char wraps to index 0
+    // (palette[0] and palette[7] are both #b281d6 for smooth gradient wrap)
+    const firstColor = `${ESC}[38;2;178;129;214m`;
+    const occurrences = result.split(firstColor).length - 1;
+    expect(occurrences).toBe(3);
+  });
+
+  it("safeFg falls back to accent when theme.fg throws", () => {
+    const theme = {
+      fg: (color: string, text: string) => {
+        if (color === "thinkingHigh") throw new Error("unknown");
+        return `[${color}:${text}]`;
+      },
+      bold: (t: string) => t,
+    };
+    const adapted = fromPiTheme(theme);
+    expect(adapted.fg("thinkingHigh", "x")).toBe("[accent:x]");
+  });
+
+  it("safeFg passes through when theme.fg succeeds", () => {
+    const adapted = fromPiTheme(makeSpyTheme());
+    expect(adapted.fg("thinkingMinimal", "test")).toBe("[fg:thinkingMinimal:test]");
   });
 });
