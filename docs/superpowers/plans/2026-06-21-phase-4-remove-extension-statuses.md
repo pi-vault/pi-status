@@ -19,6 +19,7 @@
 ### Task 4.1: Remove `extension-statuses` from types
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 
 - [ ] **Step 1: Remove from `StatusLineSegmentId` union**
@@ -32,6 +33,7 @@ In the same file, remove `"extension-statuses",` from the `KNOWN_SEGMENTS` array
 ### Task 4.2: Remove from editor and update render
 
 **Files:**
+
 - Modify: `src/tui/editor.ts`
 - Modify: `src/tui/render.ts`
 
@@ -107,11 +109,12 @@ export function buildFooterLine(
 ### Task 4.3: Update render tests
 
 **Files:**
+
 - Modify: `tests/render.test.ts`
 
 - [ ] **Step 1: Replace the `formatSegment — extension-statuses` suite with `buildFooterLine` extension-status tests**
 
-Remove the entire `describe("formatSegment — extension-statuses", ...)` block (lines 650–735) and replace with tests that verify extension statuses are auto-appended through `buildFooterLine`:
+Remove the entire `describe("formatSegment — extension-statuses", ...)` block (lines 630–715) and replace with tests that verify extension statuses are auto-appended through `buildFooterLine`:
 
 ```ts
 describe("buildFooterLine — extension statuses", () => {
@@ -222,6 +225,7 @@ describe("buildFooterLine — extension statuses", () => {
 ### Task 4.4: Update editor tests
 
 **Files:**
+
 - Modify: `src/tui/editor.ts`
 - Modify: `tests/editor.test.ts`
 
@@ -235,23 +239,27 @@ Change all `for (let i = 0; i < 16; i++)` (set in Phase 3) to `for (let i = 0; i
 Specifically:
 
 In `"keeps left/right as no-ops for the policy row and discovered rows"`:
+
 ```ts
-    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
 ```
 
 In `"updates filter state when toggling the policy row"`:
+
 ```ts
-    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
 ```
 
 In `"saves filter: { mode: 'all', hidden: [...] }"`:
+
 ```ts
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
 ```
 
 In `"saves filter: { mode: 'only', shown: [...] }"`:
+
 ```ts
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
 ```
 
 - [ ] **Step 2: Update the editor description test and constant**
@@ -271,21 +279,19 @@ const STATUS_ROW_DESCRIPTION = "Toggle visibility in the status line";
 In `tests/editor.test.ts`, in the test `"renders generic descriptions for discovered rows and the policy row"`, change:
 
 ```ts
-    expect(
-      lines.some((line) =>
-        line.includes("Visible when extension-statuses is enabled"),
-      ),
-    ).toBe(true);
+expect(
+  lines.some((line) =>
+    line.includes("Visible when extension-statuses is enabled"),
+  ),
+).toBe(true);
 ```
 
 to:
 
 ```ts
-    expect(
-      lines.some((line) =>
-        line.includes("Toggle visibility in the status line"),
-      ),
-    ).toBe(true);
+expect(
+  lines.some((line) => line.includes("Toggle visibility in the status line")),
+).toBe(true);
 ```
 
 - [ ] **Step 3: Update the search test for status row description**
@@ -295,16 +301,57 @@ The test `"searches discovered status rows by key and generic description"` fuzz
 In `tests/editor.test.ts`, in the second part of that test, replace:
 
 ```ts
-    for (const char of "enabled") editor.handleInput(char);
+for (const char of "enabled") editor.handleInput(char);
 ```
 
 with:
 
 ```ts
-    for (const char of "visibility") editor.handleInput(char);
+for (const char of "visibility") editor.handleInput(char);
 ```
 
-### Task 4.5: Verify Phase 4
+### Task 4.5: Update README documentation
+
+**Files:**
+
+- Modify: `README.md`
+
+- [ ] **Step 1: Remove `extension-statuses` from the segment list in README**
+
+In `README.md`, remove the line:
+
+```text
+- `extension-statuses`
+```
+
+- [ ] **Step 2: Remove the `extension-statuses` explanation paragraph**
+
+Remove the paragraph:
+
+```text
+`extension-statuses` renders the visible extension status values reported by Pi extensions. `/statusline` also lets you hide individual status keys or switch to an allowlist.
+```
+
+- [ ] **Step 3: Replace the extension-statuses example**
+
+Replace:
+
+````text
+Show extension activity too:
+
+```text
+model · current-dir · extension-statuses
+````
+
+````
+
+with:
+
+```text
+Extension statuses auto-append to the footer when visible. Use `/statusline` to hide individual status keys or switch to an allowlist.
+````
+
+### Task 4.6: Verify Phase 4
 
 - [ ] **Step 1: Run the full check suite**
 
@@ -315,6 +362,6 @@ Expected: All lint, typecheck, and tests pass.
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/shared/types.ts src/tui/editor.ts src/tui/render.ts tests/render.test.ts tests/editor.test.ts
+git add src/shared/types.ts src/tui/editor.ts src/tui/render.ts tests/render.test.ts tests/editor.test.ts README.md
 git commit -m "refactor: remove extension-statuses segment, auto-append to footer"
 ```
