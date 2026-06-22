@@ -5,13 +5,13 @@ import {
   visibleWidth,
   type Component,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig } from "../src/shared/types.ts";
-import type { FooterRenderInput } from "../src/tui/render.ts";
+import type { PiStatusConfig } from "../../src/shared/types.ts";
+import type { FooterRenderInput } from "../../src/tui/render.ts";
 import {
   collectHiddenStatuses,
   createStatusLineEditor,
-} from "../src/tui/editor.ts";
-import { noTheme, type StatusLineTheme } from "../src/tui/theme.ts";
+} from "../../src/tui/editor.ts";
+import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 
 type EditorComponent = Component & { handleInput: (data: string) => void };
 

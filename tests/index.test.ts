@@ -10,7 +10,7 @@ import {
   createBus,
   createContext,
   renderWithFactory,
-} from "./test-helpers.ts";
+} from "./helpers.ts";
 
 describe("extension wiring", () => {
   it("installs footer and registers /statusline", () => {
