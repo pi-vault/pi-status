@@ -48,7 +48,7 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     id: "context-remaining",
     label: "Context Remaining",
     description:
-      "Percentage of context window remaining (omitted when unknown)",
+      "Context tokens remaining vs window size (omitted when unknown)",
   },
   {
     id: "context-used",
