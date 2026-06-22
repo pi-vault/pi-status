@@ -46,8 +46,19 @@ describe("render", () => {
       formatModelWithReasoning(
         { id: "x", name: "X", reasoning: true },
         "medium",
+        identityTheme,
       ),
-    ).toBe("X [med]");
+    ).toEqual(["X [med]", null]);
+
+    expect(
+      formatModelWithReasoning(
+        { id: "x", name: "X", reasoning: false },
+        "medium",
+        identityTheme,
+      ),
+    ).toEqual(["X", "accent"]);
+
+    expect(formatModelWithReasoning(undefined, "medium", identityTheme)).toBeNull();
   });
 
   it("finds nearest project root label", () => {
@@ -169,43 +180,125 @@ describe("theme — thinking-level colors", () => {
 });
 
 describe("formatSegment — model-with-reasoning", () => {
-  it("appends reasoning level abbreviation for reasoning models", () => {
-    const result = formatSegment(
-      "model-with-reasoning",
-      segmentInput({ model: { id: "x", name: "X", reasoning: true } }),
-      identityTheme,
-    );
-    expect(result).toEqual(["X [med]", "accent"]);
-  });
-
-  it("returns plain name for non-reasoning models", () => {
+  it("returns accent-colored name for non-reasoning models", () => {
     const result = formatSegment(
       "model-with-reasoning",
       segmentInput({ model: { id: "x", name: "X", reasoning: false } }),
-      identityTheme,
+      markerTheme,
     );
     expect(result).toEqual(["X", "accent"]);
-  });
-
-  it("abbreviates 'minimal' to 'min'", () => {
-    const result = formatSegment(
-      "model-with-reasoning",
-      segmentInput({
-        model: { id: "x", name: "X", reasoning: true },
-        thinkingLevel: "minimal",
-      }),
-      identityTheme,
-    );
-    expect(result).toEqual(["X [min]", "accent"]);
   });
 
   it("returns null when model is undefined", () => {
     const result = formatSegment(
       "model-with-reasoning",
       segmentInput(),
-      identityTheme,
+      markerTheme,
     );
     expect(result).toBeNull();
+  });
+
+  it("colors bracket with thinkingOff for level off", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "off",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [thinkingOff:[off]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("colors bracket with thinkingMinimal for level minimal", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "minimal",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [thinkingMinimal:[min]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("colors bracket with thinkingLow for level low", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "low",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [thinkingLow:[low]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("colors bracket with thinkingMedium for level medium", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "medium",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [thinkingMedium:[med]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("colors bracket with thinkingHigh for level high", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "high",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [thinkingHigh:[high]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("applies rainbow to bracket for level xhigh", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "xhigh",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:X] [rainbow:[xhigh]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("uses model id when name is unavailable", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "gpt-5", reasoning: true },
+        thinkingLevel: "medium",
+      }),
+      markerTheme,
+    );
+    expect(result?.[0]).toBe("[accent:gpt-5] [thinkingMedium:[med]]");
+    expect(result?.[1]).toBeNull();
+  });
+
+  it("formats correctly with identityTheme (no color markers)", () => {
+    const result = formatSegment(
+      "model-with-reasoning",
+      segmentInput({
+        model: { id: "x", name: "X", reasoning: true },
+        thinkingLevel: "medium",
+      }),
+      identityTheme,
+    );
+    expect(result).toEqual(["X [med]", null]);
   });
 });
 

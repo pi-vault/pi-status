@@ -921,8 +921,8 @@ describe("statusline editor live theme sync", () => {
     );
     expect(firstDivider).toBeDefined();
     const firstPreview = firstLines.at(-2) ?? "";
-    expect(firstPreview).toContain("[first-accent]");
-    expect(firstPreview).toContain("GPT-5 [med]");
+    expect(firstPreview).toContain("[first-accent]GPT-5[/first-accent]");
+    expect(firstPreview).toContain("[med]");
 
     // Pi swaps the live theme mid-session: update the captured tags.
     accentTag = "second-accent";
@@ -941,7 +941,7 @@ describe("statusline editor live theme sync", () => {
     );
     expect(secondDivider).toBeDefined();
     const secondPreview = secondLines.at(-2) ?? "";
-    expect(secondPreview).toContain("[second-accent]");
-    expect(secondPreview).toContain("GPT-5 [med]");
+    expect(secondPreview).toContain("[second-accent]GPT-5[/second-accent]");
+    expect(secondPreview).toContain("[med]");
   });
 });
