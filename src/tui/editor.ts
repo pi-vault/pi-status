@@ -87,21 +87,13 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     description:
       "Remaining usage on the secondary usage limit (omitted when unavailable)",
   },
-  {
-    id: "extension-statuses",
-    label: "Extension Statuses",
-    description:
-      "Visible extension status values (omitted when none are visible)",
-  },
 ] as const;
 
 const SEGMENT_METADATA = new Map(
   SEGMENT_ORDER.map((segment) => [segment.id, segment]),
 );
 
-const STATUS_ROW_DESCRIPTION = "Visible when extension-statuses is enabled";
-const POLICY_ROW_LABEL = "Extension Statuses";
-const POLICY_ROW_DESCRIPTION = "Show extension statuses";
+const STATUS_ROW_DESCRIPTION = "Toggle visibility in the status line";
 const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses yet.";
 const SEGMENT_SECTION_TITLE = "Status line items";
 const STATUS_SECTION_TITLE = "Extension statuses";
@@ -120,11 +112,7 @@ const HELP_SEARCHING =
 
 type SegmentInteractiveRow = { type: "segment"; id: StatusLineSegmentId };
 type StatusInteractiveRow = { type: "status"; key: string };
-type PolicyInteractiveRow = { type: "policy" };
-type InteractiveRow =
-  | SegmentInteractiveRow
-  | StatusInteractiveRow
-  | PolicyInteractiveRow;
+type InteractiveRow = SegmentInteractiveRow | StatusInteractiveRow;
 
 type RenderRow =
   | { type: "header"; text: string }
@@ -132,19 +120,15 @@ type RenderRow =
   | { type: "hint"; text: string }
   | { type: "interactive"; row: InteractiveRow; interactiveIndex: number };
 
-export function mapStatusDraftToFilter(input: {
+export function collectHiddenStatuses(input: {
   discoveredKeys: string[];
   shownKeys: Iterable<string>;
-  newStatusesShown: boolean;
-}): PiStatusConfig["filter"] {
+}): string[] {
   const discovered = [...input.discoveredKeys].sort((a, b) =>
     a.localeCompare(b),
   );
   const shown = new Set(input.shownKeys);
-  if (input.newStatusesShown) {
-    return { mode: "all", hidden: discovered.filter((k) => !shown.has(k)) };
-  }
-  return { mode: "only", shown: discovered.filter((k) => shown.has(k)) };
+  return discovered.filter((k) => !shown.has(k));
 }
 
 function includesFuzzy(haystack: string, needle: string): boolean {
@@ -247,7 +231,7 @@ function renderHint(
 export function createStatusLineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
-  previewInput: Omit<FooterRenderInput, "segments" | "filter">;
+  previewInput: Omit<FooterRenderInput, "segments" | "extensionSegments">;
   theme: StatusLineTheme;
   done: (result: PiStatusConfig | null) => void;
   requestRender: () => void;
@@ -262,16 +246,8 @@ export function createStatusLineEditor(options: {
   );
   let enabledSegments = [...options.config.segments];
 
-  const shownNew = options.config.filter.mode === "all";
-  let newPolicyShown = shownNew;
-
-  const hiddenSet = new Set(
-    options.config.filter.mode === "all" ? options.config.filter.hidden : [],
-  );
-  const shown =
-    options.config.filter.mode === "all"
-      ? new Set(orderedStatuses.filter((x) => !hiddenSet.has(x)))
-      : new Set(options.config.filter.shown);
+  const hiddenSet = new Set(options.config.extensionSegments.hidden);
+  const shown = new Set(orderedStatuses.filter((x) => !hiddenSet.has(x)));
 
   let selected = 0;
   let query = "";
@@ -294,13 +270,12 @@ export function createStatusLineEditor(options: {
         id: segment.id,
       })) as SegmentInteractiveRow[];
 
-    const policy: PolicyInteractiveRow = { type: "policy" };
     const statuses = orderedStatuses.map((key) => ({
       type: "status",
       key,
     })) as StatusInteractiveRow[];
 
-    return [...enabled, ...disabled, policy, ...statuses];
+    return [...enabled, ...disabled, ...statuses];
   }
 
   function rowMatchesQuery(row: InteractiveRow): boolean {
@@ -309,12 +284,6 @@ export function createStatusLineEditor(options: {
       const meta = SEGMENT_METADATA.get(row.id);
       if (!meta) return false;
       return includesFuzzy(`${meta.label} ${meta.description}`, query);
-    }
-    if (row.type === "policy") {
-      return includesFuzzy(
-        `${POLICY_ROW_LABEL} ${POLICY_ROW_DESCRIPTION}`,
-        query,
-      );
     }
     return includesFuzzy(`${row.key} ${STATUS_ROW_DESCRIPTION}`, query);
   }
@@ -337,8 +306,7 @@ export function createStatusLineEditor(options: {
       (row): row is SegmentInteractiveRow => row.type === "segment",
     );
     const extensionRows = filtered.filter(
-      (row): row is StatusInteractiveRow | PolicyInteractiveRow =>
-        row.type === "status" || row.type === "policy",
+      (row): row is StatusInteractiveRow => row.type === "status",
     );
 
     const renderRows: RenderRow[] = [];
@@ -380,12 +348,8 @@ export function createStatusLineEditor(options: {
       else enabledSegments = [...enabledSegments, row.id];
       return;
     }
-    if (row.type === "status") {
-      if (shown.has(row.key)) shown.delete(row.key);
-      else shown.add(row.key);
-      return;
-    }
-    newPolicyShown = !newPolicyShown;
+    if (shown.has(row.key)) shown.delete(row.key);
+    else shown.add(row.key);
   }
 
   function moveSegment(delta: -1 | 1, row: InteractiveRow): void {
@@ -404,11 +368,12 @@ export function createStatusLineEditor(options: {
   function toConfig(): PiStatusConfig {
     return {
       segments: enabledSegments,
-      filter: mapStatusDraftToFilter({
-        discoveredKeys: orderedStatuses,
-        shownKeys: shown,
-        newStatusesShown: newPolicyShown,
-      }),
+      extensionSegments: {
+        hidden: collectHiddenStatuses({
+          discoveredKeys: orderedStatuses,
+          shownKeys: shown,
+        }),
+      },
     };
   }
 
@@ -465,7 +430,7 @@ export function createStatusLineEditor(options: {
       const renderRows = getRenderRows();
       const cfg = toConfig();
       const preview = buildFooterLine(
-        { ...options.previewInput, segments: cfg.segments, filter: cfg.filter },
+        { ...options.previewInput, segments: cfg.segments, extensionSegments: cfg.extensionSegments },
         options.theme,
         width,
       );
@@ -519,28 +484,13 @@ export function createStatusLineEditor(options: {
           );
           continue;
         }
-        if (row.type === "status") {
-          lines.push(
-            renderRowLine(
-              {
-                selected: selectedRow,
-                checkbox: shown.has(row.key) ? "[\u2022]" : "[ ]",
-                labelWithOrder: row.key,
-                description: STATUS_ROW_DESCRIPTION,
-              },
-              width,
-              options.theme,
-            ),
-          );
-          continue;
-        }
         lines.push(
           renderRowLine(
             {
               selected: selectedRow,
-              checkbox: newPolicyShown ? "[\u2022]" : "[ ]",
-              labelWithOrder: POLICY_ROW_LABEL,
-              description: POLICY_ROW_DESCRIPTION,
+              checkbox: shown.has(row.key) ? "[\u2022]" : "[ ]",
+              labelWithOrder: row.key,
+              description: STATUS_ROW_DESCRIPTION,
             },
             width,
             options.theme,

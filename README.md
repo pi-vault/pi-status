@@ -77,11 +77,10 @@ You can compose the footer from these segment IDs:
 - `session-id`
 - `five-hour-limit`
 - `weekly-limit`
-- `extension-statuses`
 
 `five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). When `pi-usage` is not installed or has not responded yet, those segments are hidden from `/statusline` and omitted from the footer.
 
-`extension-statuses` renders the visible extension status values reported by Pi extensions. `/statusline` also lets you hide individual status keys or switch to an allowlist.
+Extension statuses auto-append to the footer when visible. Use `/statusline` to hide individual status keys.
 
 ## Common Examples
 
@@ -101,12 +100,6 @@ Usage-aware footer:
 
 ```text
 model-with-reasoning · current-dir · five-hour-limit · weekly-limit
-```
-
-Show extension activity too:
-
-```text
-model · current-dir · extension-statuses
 ```
 
 ## Compatibility

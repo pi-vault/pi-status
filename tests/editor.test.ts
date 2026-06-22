@@ -8,8 +8,8 @@ import {
 import type { PiStatusConfig } from "../src/shared/types.ts";
 import type { FooterRenderInput } from "../src/tui/render.ts";
 import {
+  collectHiddenStatuses,
   createStatusLineEditor,
-  mapStatusDraftToFilter,
 } from "../src/tui/editor.ts";
 import { noTheme, type StatusLineTheme } from "../src/tui/theme.ts";
 
@@ -34,12 +34,12 @@ const HIGHLIGHT_THEME: StatusLineTheme = {
 function makeConfig(overrides?: Partial<PiStatusConfig>): PiStatusConfig {
   return {
     segments: ["model-with-reasoning", "current-dir"],
-    filter: { mode: "all", hidden: [] },
+    extensionSegments: { hidden: [] },
     ...overrides,
   };
 }
 
-function makePreviewInput(): Omit<FooterRenderInput, "segments" | "filter"> {
+function makePreviewInput(): Omit<FooterRenderInput, "segments" | "extensionSegments"> {
   return {
     cwd: "/Users/test/project",
     thinkingLevel: "medium",
@@ -127,25 +127,23 @@ describe("statusline editor shell", () => {
   });
 });
 
-describe("statusline editor filter mapping", () => {
-  it('maps "new shown" to all+hidden', () => {
+describe("statusline editor hidden status collection", () => {
+  it("returns hidden keys sorted alphabetically", () => {
     expect(
-      mapStatusDraftToFilter({
+      collectHiddenStatuses({
         discoveredKeys: ["c", "a", "b"],
         shownKeys: ["a", "c"],
-        newStatusesShown: true,
       }),
-    ).toEqual({ mode: "all", hidden: ["b"] });
+    ).toEqual(["b"]);
   });
 
-  it('maps "new hidden" to only+shown', () => {
+  it("returns empty array when all are shown", () => {
     expect(
-      mapStatusDraftToFilter({
-        discoveredKeys: ["c", "a", "b"],
-        shownKeys: ["a", "c"],
-        newStatusesShown: false,
+      collectHiddenStatuses({
+        discoveredKeys: ["a", "b"],
+        shownKeys: ["a", "b"],
       }),
-    ).toEqual({ mode: "only", shown: ["a", "c"] });
+    ).toEqual([]);
   });
 });
 
@@ -267,32 +265,22 @@ describe("statusline editor sections and ordering", () => {
     expect(betaIndex).toBeLessThan(zetaIndex);
   });
 
-  it("renders the policy row before discovered extension-status rows", () => {
+  it("renders discovered extension-status rows in the extension section", () => {
     const { editor } = makeEditor({
       discovered: ["alpha-status", "beta-status"],
     });
     const lines = rowLines(renderLines(editor, 200));
-    const policyIndex = lines.findIndex(
-      (line) =>
-        line.includes("Extension Statuses") &&
-        line.includes("Show extension statuses"),
-    );
     const alphaIndex = lines.findIndex((line) => line.includes("alpha-status"));
+    const betaIndex = lines.findIndex((line) => line.includes("beta-status"));
 
-    expect(policyIndex).toBeLessThan(alphaIndex);
+    expect(alphaIndex).toBeGreaterThanOrEqual(0);
+    expect(alphaIndex).toBeLessThan(betaIndex);
   });
 
   it("shows the empty-state hint when no extension statuses are discovered", () => {
     const { editor } = makeEditor();
     const lines = rowLines(renderLines(editor, 200));
 
-    expect(
-      lines.some(
-        (line) =>
-          line.includes("Extension Statuses") &&
-          line.includes("Show extension statuses"),
-      ),
-    ).toBe(true);
     expect(lines).toContain("No extension statuses yet.");
   });
 });
@@ -317,24 +305,9 @@ describe("statusline editor search", () => {
     expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
 
     for (let i = 0; i < 6; i++) editor.handleInput(BACKSPACE);
-    for (const char of "enabled") editor.handleInput(char);
+    for (const char of "visibility") editor.handleInput(char);
     lines = rowLines(renderLines(editor, 200));
     expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
-  });
-
-  it("searches the policy row by label and description", () => {
-    const { editor } = makeEditor({ discovered: ["custom-status"] });
-    for (const char of "show") editor.handleInput(char);
-    const lines = rowLines(renderLines(editor, 200));
-
-    expect(
-      lines.some(
-        (line) =>
-          line.includes("Extension Statuses") &&
-          line.includes("Show extension statuses"),
-      ),
-    ).toBe(true);
-    expect(lines.some((line) => line.includes("custom-status"))).toBe(false);
   });
 
   it("omits section headers, divider, and empty-state hint while searching", () => {
@@ -346,17 +319,6 @@ describe("statusline editor search", () => {
     expect(lines).not.toContain("Extension statuses");
     expect(lines.some((line) => /^─+$/.test(line))).toBe(false);
     expect(lines).not.toContain("No extension statuses yet.");
-  });
-
-  it("does not force the policy row visible during search", () => {
-    const { editor } = makeEditor({ discovered: ["alpha-status"] });
-    for (const char of "alpha") editor.handleInput(char);
-    const lines = rowLines(renderLines(editor, 200));
-
-    expect(lines.some((line) => line.includes("alpha-status"))).toBe(true);
-    expect(lines.some((line) => line.includes("Show extension statuses"))).toBe(
-      false,
-    );
   });
 
   it("shows an empty list area when a non-empty search has no matches", () => {
@@ -383,18 +345,15 @@ describe("statusline editor descriptions", () => {
     ).toBe(true);
   });
 
-  it("renders generic descriptions for discovered rows and the policy row", () => {
+  it("renders generic descriptions for discovered rows", () => {
     const { editor } = makeEditor({ discovered: ["custom-status"] });
     const lines = renderLines(editor, 200);
 
     expect(
       lines.some((line) =>
-        line.includes("Visible when extension-statuses is enabled"),
+        line.includes("Toggle visibility in the status line"),
       ),
     ).toBe(true);
-    expect(lines.some((line) => line.includes("Show extension statuses"))).toBe(
-      true,
-    );
   });
 });
 
@@ -468,9 +427,9 @@ describe("statusline editor interactions", () => {
     expect(saved?.segments).toEqual(["current-dir"]);
   });
 
-  it("keeps left/right as no-ops for the policy row and discovered rows", () => {
+  it("keeps left/right as no-ops for discovered rows", () => {
     const { editor, done } = makeEditor({ discovered: ["alpha-status"] });
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
     editor.handleInput(LEFT);
     editor.handleInput(RIGHT);
     editor.handleInput(DOWN);
@@ -605,21 +564,6 @@ describe("statusline editor live preview and layout", () => {
     editor.handleInput("u");
     editor.handleInput("r");
     expect(renderLines(editor, 200).at(-2)).toBe(initial);
-  });
-
-  it("updates filter state when toggling the policy row", () => {
-    const { editor, done } = makeEditor({
-      config: makeConfig({
-        segments: ["model-with-reasoning"],
-        filter: { mode: "all", hidden: [] },
-      }),
-    });
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
-    editor.handleInput(SPACE);
-    editor.handleInput(ENTER);
-    const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-
-    expect(saved?.filter).toEqual({ mode: "only", shown: [] });
   });
 
   it("renders aligned label and description columns when width allows", () => {
@@ -766,43 +710,41 @@ describe("statusline editor width hardening", () => {
 });
 
 describe("statusline editor discovered-status filter persistence", () => {
-  it("saves filter: { mode: 'all', hidden: [...] } when hiding one discovered status in all mode", () => {
+  it("saves extensionSegments with hidden key when toggling status off", () => {
     const { editor, done } = makeEditor({
       config: makeConfig({
         segments: ["model-with-reasoning", "current-dir"],
-        filter: { mode: "all", hidden: [] },
+        extensionSegments: { hidden: [] },
       }),
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
 
-    expect(saved?.filter).toEqual({
-      mode: "all",
+    expect(saved?.extensionSegments).toEqual({
       hidden: ["alpha-status"],
     });
   });
 
-  it("saves filter: { mode: 'only', shown: [...] } when showing one discovered status in only mode", () => {
+  it("saves extensionSegments with no hidden keys when toggling status on", () => {
     const { editor, done } = makeEditor({
       config: makeConfig({
         segments: ["model-with-reasoning", "current-dir"],
-        filter: { mode: "only", shown: [] },
+        extensionSegments: { hidden: ["alpha-status", "beta-status"] },
       }),
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
 
-    expect(saved?.filter).toEqual({
-      mode: "only",
-      shown: ["alpha-status"],
+    expect(saved?.extensionSegments).toEqual({
+      hidden: ["beta-status"],
     });
   });
 });

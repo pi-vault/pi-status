@@ -12,8 +12,8 @@ import { dirname, join, resolve } from "node:path";
 import {
   DEFAULT_SEGMENTS,
   isKnownSegment,
+  type ExtensionSegments,
   type PiStatusConfig,
-  type StatusFilter,
   type StatusLineSegmentId,
 } from "../shared/types.ts";
 
@@ -24,16 +24,13 @@ export type ConfigLoadResult = {
 
 export const DEFAULT_CONFIG: PiStatusConfig = {
   segments: [...DEFAULT_SEGMENTS],
-  filter: { mode: "all", hidden: [] },
+  extensionSegments: { hidden: [] },
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
     segments: [...DEFAULT_CONFIG.segments],
-    filter:
-      DEFAULT_CONFIG.filter.mode === "all"
-        ? { mode: "all", hidden: [...DEFAULT_CONFIG.filter.hidden] }
-        : { mode: "only", shown: [...DEFAULT_CONFIG.filter.shown] },
+    extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
   };
 }
 
@@ -79,27 +76,13 @@ function normalizeFilterValues(input: unknown): string[] {
   return out;
 }
 
-export function normalizeStatusFilter(input: unknown): StatusFilter {
+export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return { mode: "all", hidden: [] };
+    return { hidden: [] };
   }
-  const mode = (input as { mode?: unknown }).mode;
-
-  if (mode === "all") {
-    return {
-      mode: "all",
-      hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden),
-    };
-  }
-
-  if (mode === "only") {
-    return {
-      mode: "only",
-      shown: normalizeFilterValues((input as { shown?: unknown }).shown),
-    };
-  }
-
-  return { mode: "all", hidden: [] };
+  return {
+    hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden),
+  };
 }
 
 function readJsonObject(path: string): Record<string, unknown> | null {
@@ -131,10 +114,12 @@ function normalizePiStatus(input: unknown): PiStatusConfig {
     return cloneDefaultConfig();
   }
   const segments = normalizeSegments((input as { segments?: unknown }).segments);
-  const filter = normalizeStatusFilter((input as { filter?: unknown }).filter);
+  const extensionSegments = normalizeExtensionSegments(
+    (input as { extensionSegments?: unknown }).extensionSegments,
+  );
   return {
     segments: segments.length > 0 ? segments : [...DEFAULT_SEGMENTS],
-    filter,
+    extensionSegments,
   };
 }
 
@@ -149,15 +134,15 @@ function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
   const p = projectValue as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...g, ...p };
 
-  const gFilter = g.filter;
-  const pFilter = p.filter;
+  const gExt = g.extensionSegments;
+  const pExt = p.extensionSegments;
   if (
-    gFilter && typeof gFilter === "object" && !Array.isArray(gFilter) &&
-    pFilter && typeof pFilter === "object" && !Array.isArray(pFilter)
+    gExt && typeof gExt === "object" && !Array.isArray(gExt) &&
+    pExt && typeof pExt === "object" && !Array.isArray(pExt)
   ) {
-    merged.filter = {
-      ...(gFilter as Record<string, unknown>),
-      ...(pFilter as Record<string, unknown>),
+    merged.extensionSegments = {
+      ...(gExt as Record<string, unknown>),
+      ...(pExt as Record<string, unknown>),
     };
   }
 
@@ -210,10 +195,7 @@ export function saveConfigToSettings(
     ...base,
     statusLine: {
       segments: [...config.segments],
-      filter:
-        config.filter.mode === "all"
-          ? { mode: "all", hidden: [...config.filter.hidden] }
-          : { mode: "only", shown: [...config.filter.shown] },
+      extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     },
   };
 

@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
   DEFAULT_SEGMENTS,
-  type StatusFilter,
+  type ExtensionSegments,
   type StatusLineSegmentId,
 } from "../shared/types.ts";
 
@@ -54,7 +54,7 @@ export type FooterRenderInput = {
     };
   };
   extensionStatuses?: ReadonlyMap<string, string>;
-  filter: StatusFilter;
+  extensionSegments: ExtensionSegments;
   segments: StatusLineSegmentId[];
 };
 
@@ -162,13 +162,8 @@ function formatExtensionStatuses(
   );
   if (entries.length === 0) return null;
 
-  const filter = input.filter;
-  const blocked = filter.mode === "all" ? new Set(normalizeFilterList(filter.hidden)) : undefined;
-  const allowed = filter.mode === "only" ? new Set(normalizeFilterList(filter.shown)) : undefined;
-  const visible =
-    filter.mode === "all"
-      ? entries.filter(([key]) => !blocked?.has(key))
-      : entries.filter(([key]) => allowed?.has(key));
+  const blocked = new Set(normalizeFilterList(input.extensionSegments.hidden));
+  const visible = entries.filter(([key]) => !blocked.has(key));
 
   const parts = visible.slice(0, 5).map(([key, value]) => {
     const trimmed = hasAnsi(value)
@@ -190,7 +185,7 @@ function formatExtensionStatuses(
 export function formatSegment(
   id: StatusLineSegmentId,
   input: FooterRenderInput,
-  theme: ThemeLike,
+  _theme: ThemeLike,
 ): [text: string, color: FooterRenderColor | null] | null {
   switch (id) {
     case "model": {
@@ -258,10 +253,6 @@ export function formatSegment(
       const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
       return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
     }
-    case "extension-statuses": {
-      const value = formatExtensionStatuses(input, theme);
-      return value ? [value, null] : null;
-    }
     default:
       return null;
   }
@@ -276,6 +267,9 @@ export function buildFooterLine(
     .map((id) => formatSegment(id, input, theme))
     .filter((x): x is [string, FooterRenderColor | null] => x !== null)
     .map(([text, color]) => (color ? theme.fg(color, text) : text));
+
+  const extStatus = formatExtensionStatuses(input, theme);
+  if (extStatus) parts.push(extStatus);
 
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);

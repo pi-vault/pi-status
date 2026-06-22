@@ -113,7 +113,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           const line = buildFooterLine(
             {
               ...snapshot,
-              filter: state.config.filter,
+              extensionSegments: state.config.extensionSegments,
               segments: state.config.segments,
             },
             theme,
@@ -138,7 +138,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand("statusline", {
-    description: "Configure statusline segments and extension-status filters",
+    description: "Configure statusline segments and extension-status visibility",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/statusline requires interactive UI", "warning");
