@@ -627,89 +627,106 @@ describe("formatSegment — weekly-limit", () => {
   });
 });
 
-describe("formatSegment — extension-statuses", () => {
-  it("returns formatted statuses joined by pipe", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({
-        extensionStatuses: new Map([
-          ["alpha", "running"],
-          ["beta", "paused"],
-        ]),
-        filter: { mode: "all", hidden: [] },
-      }),
+describe("buildFooterLine — extension statuses", () => {
+  it("appends extension statuses after segment parts", () => {
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: ["run-state"],
+          extensionStatuses: new Map([
+            ["alpha", "running"],
+            ["beta", "paused"],
+          ]),
+          filter: { mode: "all", hidden: [] },
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result).not.toBeNull();
-    expect(result?.[0]).toContain("running");
-    expect(result?.[0]).toContain("paused");
-    expect(result?.[1]).toBeNull();
+    expect(line).toContain("idle");
+    expect(line).toContain("running");
+    expect(line).toContain("paused");
   });
 
   it("respects the hidden filter", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({
-        extensionStatuses: new Map([
-          ["alpha", "running"],
-          ["beta", "paused"],
-        ]),
-        filter: { mode: "all", hidden: ["alpha"] },
-      }),
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: ["run-state"],
+          extensionStatuses: new Map([
+            ["alpha", "running"],
+            ["beta", "paused"],
+          ]),
+          filter: { mode: "all", hidden: ["alpha"] },
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result).not.toBeNull();
-    expect(result?.[0]).not.toContain("running");
-    expect(result?.[0]).toContain("paused");
+    expect(line).not.toContain("running");
+    expect(line).toContain("paused");
   });
 
   it("respects the only filter", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({
-        extensionStatuses: new Map([
-          ["alpha", "running"],
-          ["beta", "paused"],
-        ]),
-        filter: { mode: "only", shown: ["alpha"] },
-      }),
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: ["run-state"],
+          extensionStatuses: new Map([
+            ["alpha", "running"],
+            ["beta", "paused"],
+          ]),
+          filter: { mode: "only", shown: ["alpha"] },
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result).not.toBeNull();
-    expect(result?.[0]).toContain("running");
-    expect(result?.[0]).not.toContain("paused");
+    expect(line).toContain("running");
+    expect(line).not.toContain("paused");
   });
 
-  it("returns null when no extension statuses exist", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({ extensionStatuses: new Map() }),
+  it("omits extension statuses when none exist", () => {
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: ["run-state"],
+          extensionStatuses: new Map(),
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result).toBeNull();
+    expect(line).toBe("idle");
   });
 
-  it("returns null when all statuses are hidden", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({
-        extensionStatuses: new Map([["alpha", "running"]]),
-        filter: { mode: "all", hidden: ["alpha"] },
-      }),
+  it("omits extension statuses when all are hidden", () => {
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: ["run-state"],
+          extensionStatuses: new Map([["alpha", "running"]]),
+          filter: { mode: "all", hidden: ["alpha"] },
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result).toBeNull();
+    expect(line).toBe("idle");
   });
 
   it("strips key prefix from status values", () => {
-    const result = formatSegment(
-      "extension-statuses",
-      segmentInput({
-        extensionStatuses: new Map([["alpha", "alpha: running"]]),
-        filter: { mode: "all", hidden: [] },
-      }),
+    const line = buildFooterLine(
+      {
+        ...segmentInput({
+          segments: [],
+          extensionStatuses: new Map([["alpha", "alpha: running"]]),
+          filter: { mode: "all", hidden: [] },
+        }),
+      },
       identityTheme,
+      200,
     );
-    expect(result?.[0]).toBe("running");
+    expect(line).toBe("running");
   });
 });

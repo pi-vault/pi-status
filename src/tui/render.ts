@@ -190,7 +190,7 @@ function formatExtensionStatuses(
 export function formatSegment(
   id: StatusLineSegmentId,
   input: FooterRenderInput,
-  theme: ThemeLike,
+  _theme: ThemeLike,
 ): [text: string, color: FooterRenderColor | null] | null {
   switch (id) {
     case "model": {
@@ -258,10 +258,6 @@ export function formatSegment(
       const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
       return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
     }
-    case "extension-statuses": {
-      const value = formatExtensionStatuses(input, theme);
-      return value ? [value, null] : null;
-    }
     default:
       return null;
   }
@@ -276,6 +272,9 @@ export function buildFooterLine(
     .map((id) => formatSegment(id, input, theme))
     .filter((x): x is [string, FooterRenderColor | null] => x !== null)
     .map(([text, color]) => (color ? theme.fg(color, text) : text));
+
+  const extStatus = formatExtensionStatuses(input, theme);
+  if (extStatus) parts.push(extStatus);
 
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);

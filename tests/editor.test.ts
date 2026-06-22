@@ -317,7 +317,7 @@ describe("statusline editor search", () => {
     expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
 
     for (let i = 0; i < 6; i++) editor.handleInput(BACKSPACE);
-    for (const char of "enabled") editor.handleInput(char);
+    for (const char of "visibility") editor.handleInput(char);
     lines = rowLines(renderLines(editor, 200));
     expect(lines.some((line) => line.includes("custom-status"))).toBe(true);
   });
@@ -389,7 +389,7 @@ describe("statusline editor descriptions", () => {
 
     expect(
       lines.some((line) =>
-        line.includes("Visible when extension-statuses is enabled"),
+        line.includes("Toggle visibility in the status line"),
       ),
     ).toBe(true);
     expect(lines.some((line) => line.includes("Show extension statuses"))).toBe(
@@ -470,7 +470,7 @@ describe("statusline editor interactions", () => {
 
   it("keeps left/right as no-ops for the policy row and discovered rows", () => {
     const { editor, done } = makeEditor({ discovered: ["alpha-status"] });
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
     editor.handleInput(LEFT);
     editor.handleInput(RIGHT);
     editor.handleInput(DOWN);
@@ -614,7 +614,7 @@ describe("statusline editor live preview and layout", () => {
         filter: { mode: "all", hidden: [] },
       }),
     });
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 14; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
@@ -775,7 +775,7 @@ describe("statusline editor discovered-status filter persistence", () => {
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
@@ -795,7 +795,7 @@ describe("statusline editor discovered-status filter persistence", () => {
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;

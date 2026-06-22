@@ -87,19 +87,13 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     description:
       "Remaining usage on the secondary usage limit (omitted when unavailable)",
   },
-  {
-    id: "extension-statuses",
-    label: "Extension Statuses",
-    description:
-      "Visible extension status values (omitted when none are visible)",
-  },
 ] as const;
 
 const SEGMENT_METADATA = new Map(
   SEGMENT_ORDER.map((segment) => [segment.id, segment]),
 );
 
-const STATUS_ROW_DESCRIPTION = "Visible when extension-statuses is enabled";
+const STATUS_ROW_DESCRIPTION = "Toggle visibility in the status line";
 const POLICY_ROW_LABEL = "Extension Statuses";
 const POLICY_ROW_DESCRIPTION = "Show extension statuses";
 const EMPTY_EXTENSION_STATUSES_HINT = "No extension statuses yet.";

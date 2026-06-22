@@ -12,8 +12,7 @@ export type StatusLineSegmentId =
   | "total-output-tokens"
   | "session-id"
   | "five-hour-limit"
-  | "weekly-limit"
-  | "extension-statuses";
+  | "weekly-limit";
 
 export type StatusFilter =
   | { mode: "all"; hidden: string[] }
@@ -39,7 +38,6 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "session-id",
   "five-hour-limit",
   "weekly-limit",
-  "extension-statuses",
 ] as const;
 
 export const DEFAULT_SEGMENTS: readonly StatusLineSegmentId[] = [
