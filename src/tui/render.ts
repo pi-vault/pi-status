@@ -257,13 +257,21 @@ export function formatSegment(
       const window = getRateWindow(input, "fiveHour");
       if (!window) return null;
       const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
-      return [`5h ${remaining}% left`, rateColor(window.usedPercent)];
+      const dim = (s: string) => theme.fg("dim", s);
+      return [
+        `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
+        null,
+      ];
     }
     case "weekly-limit": {
       const window = getRateWindow(input, "weekly");
       if (!window) return null;
       const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
-      return [`wk ${remaining}% left`, rateColor(window.usedPercent)];
+      const dim = (s: string) => theme.fg("dim", s);
+      return [
+        `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
+        null,
+      ];
     }
     default:
       return null;
