@@ -51,7 +51,11 @@ function safeFg(theme: PiThemeLike, color: string, text: string): string {
   try {
     return theme.fg(color, text);
   } catch {
-    return theme.fg("accent", text);
+    try {
+      return theme.fg("accent", text);
+    } catch {
+      return text;
+    }
   }
 }
 
