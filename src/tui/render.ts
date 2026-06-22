@@ -88,11 +88,19 @@ export function formatCompactNumber(value: number): string {
 export function formatModelWithReasoning(
   model: ModelLike | undefined,
   thinkingLevel: string,
-): string | null {
+  theme: ThemeLike,
+): [text: string, color: FooterRenderColor | null] | null {
   const base = model?.name ?? model?.id;
   if (!base) return null;
-  if (!model?.reasoning) return base;
-  return `${base} [${normalizeThinkingLevel(thinkingLevel)}]`;
+  if (!model?.reasoning) return [base, "accent"];
+  const abbrev = normalizeThinkingLevel(thinkingLevel);
+  if (thinkingLevel === "xhigh") {
+    return [`${theme.fg("accent", base)} ${theme.rainbow(`[${abbrev}]`)}`, null];
+  }
+  return [
+    `${theme.fg("accent", base)} ${theme.fg(thinkingLevelColor(thinkingLevel), `[${abbrev}]`)}`,
+    null,
+  ];
 }
 
 export function abbreviateHomeDir(cwd: string, home = homedir()): string {
@@ -145,6 +153,28 @@ function rateColor(usedPercent: number): "success" | "warning" | "error" {
   if (usedPercent < 70) return "success";
   if (usedPercent < 90) return "warning";
   return "error";
+}
+
+type ThinkingColor = Exclude<FooterRenderColor, "accent" | "dim" | "success" | "warning" | "error">;
+
+/** Map thinking level to color — progressive warmth: off (dim gray) → high (gold). */
+function thinkingLevelColor(level: string): ThinkingColor {
+  switch (level) {
+    case "off":
+      return "thinkingOff";
+    case "minimal":
+      return "thinkingMinimal";
+    case "low":
+      return "thinkingLow";
+    case "medium":
+      return "thinkingMedium";
+    case "high":
+      return "thinkingHigh";
+    default:
+      // Unknown levels fall back to the coolest color. If new levels are
+      // added upstream, add a case here to preserve the warmth gradient.
+      return "thinkingOff";
+  }
 }
 
 const ANSI_PREFIX = `${String.fromCharCode(27)}[`;
@@ -203,10 +233,8 @@ export function formatSegment(
       const value = input.model?.name ?? input.model?.id;
       return value ? [value, "accent"] : null;
     }
-    case "model-with-reasoning": {
-      const value = formatModelWithReasoning(input.model, input.thinkingLevel);
-      return value ? [value, "accent"] : null;
-    }
+    case "model-with-reasoning":
+      return formatModelWithReasoning(input.model, input.thinkingLevel, theme);
     case "current-dir": {
       const value = abbreviateHomeDir(input.cwd);
       return value ? [value, "success"] : null;

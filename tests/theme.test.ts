@@ -164,6 +164,17 @@ describe("fromPiTheme", () => {
     expect(adapted.fg("thinkingHigh", "x")).toBe("[accent:x]");
   });
 
+  it("safeFg returns plain text when both color and accent throw", () => {
+    const theme = {
+      fg: (_color: string, _text: string): string => {
+        throw new Error("broken");
+      },
+      bold: (t: string) => t,
+    };
+    const adapted = fromPiTheme(theme);
+    expect(adapted.fg("accent", "fallback")).toBe("fallback");
+  });
+
   it("safeFg passes through when theme.fg succeeds", () => {
     const adapted = fromPiTheme(makeSpyTheme());
     expect(adapted.fg("thinkingMinimal", "test")).toBe("[fg:thinkingMinimal:test]");
