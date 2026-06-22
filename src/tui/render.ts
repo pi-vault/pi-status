@@ -232,10 +232,6 @@ export function formatSegment(
       const remaining = Math.max(0, window - total);
       return [`${formatCompactNumber(remaining)} left`, contextColor(percent)];
     }
-    case "context-window-size": {
-      const value = input.contextUsage?.contextWindow;
-      return value === undefined ? null : [`${formatCompactNumber(value)} ctx`, "dim"];
-    }
     case "used-tokens": {
       const value = input.branchTotals?.totalTokens;
       return value === undefined ? null : [`${formatCompactNumber(value)} tok`, "dim"];

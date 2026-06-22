@@ -4,7 +4,7 @@
 
 **Goal:** Remove the standalone context window size segment. Its information will be embedded in the new Context Used / Context Remaining formats (Phases 5–6).
 
-**Architecture:** Delete the segment from types, editor metadata, render switch, and tests. Update hardcoded navigation step counts in editor tests.
+**Architecture:** Delete the segment from types, editor metadata, render switch, and tests. Update hardcoded navigation step counts in editor tests. Remove from README docs.
 
 **Tech Stack:** TypeScript, Vitest
 
@@ -19,6 +19,7 @@
 ### Task 3.1: Remove `context-window-size` from types
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 
 - [ ] **Step 1: Remove from `StatusLineSegmentId` union**
@@ -32,6 +33,7 @@ In the same file, remove `"context-window-size",` from the `KNOWN_SEGMENTS` arra
 ### Task 3.2: Remove `context-window-size` from editor and render
 
 **Files:**
+
 - Modify: `src/tui/editor.ts`
 - Modify: `src/tui/render.ts`
 
@@ -63,6 +65,7 @@ In `src/tui/render.ts`, remove this case from the `formatSegment` switch:
 ### Task 3.3: Update tests
 
 **Files:**
+
 - Modify: `tests/render.test.ts`
 - Modify: `tests/editor.test.ts`
 
@@ -96,59 +99,75 @@ describe("formatSegment — context-window-size", () => {
 
 In `tests/editor.test.ts`, the removal of `context-window-size` from `SEGMENT_ORDER` reduces the total segment rows from 16 to 15. Update the two tests that navigate `16` times down to the policy row:
 
-At line 458 (inside `"keeps left/right as no-ops for the policy row and discovered rows"`):
+At line 473 (inside `"keeps left/right as no-ops for the policy row and discovered rows"`):
 
 ```ts
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
 ```
 
 Change to:
 
 ```ts
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
 ```
 
-At line 602 (inside `"updates filter state when toggling the policy row"`):
+At line 617 (inside `"updates filter state when toggling the policy row"`):
 
 ```ts
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
 ```
 
 Change to:
 
 ```ts
-    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
 ```
 
 - [ ] **Step 3: Update navigation step counts in editor tests (second pair)**
 
 The two tests that navigate `17` times (to reach the first status row past the policy) drop to `16`:
 
-At line 763 (inside `"saves filter: { mode: 'all', hidden: [...] }"`):
+At line 778 (inside `"saves filter: { mode: 'all', hidden: [...] }"`):
 
 ```ts
-    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
 ```
 
 Change to:
 
 ```ts
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
 ```
 
-At line 783 (inside `"saves filter: { mode: 'only', shown: [...] }"`):
+At line 798 (inside `"saves filter: { mode: 'only', shown: [...] }"`):
 
 ```ts
-    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
 ```
 
 Change to:
 
 ```ts
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
 ```
 
-### Task 3.4: Verify Phase 3
+### Task 3.4: Update README
+
+**Files:**
+
+- Modify: `README.md`
+
+- [ ] **Step 1: Remove `context-window-size` from the segment list in README**
+
+In `README.md`, at line 74, remove the line:
+
+```md
+- `context-window-size`
+```
+
+This is inside the available-segments bullet list between `context-used` and `used-tokens`.
+
+### Task 3.5: Verify Phase 3
 
 - [ ] **Step 1: Run the full check suite**
 
@@ -159,6 +178,6 @@ Expected: All lint, typecheck, and tests pass.
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/shared/types.ts src/tui/editor.ts src/tui/render.ts tests/render.test.ts tests/editor.test.ts
+git add src/shared/types.ts src/tui/editor.ts src/tui/render.ts tests/render.test.ts tests/editor.test.ts README.md
 git commit -m "refactor: remove context-window-size segment"
 ```

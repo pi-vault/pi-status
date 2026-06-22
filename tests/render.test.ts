@@ -370,26 +370,6 @@ describe("formatSegment — context-remaining", () => {
   });
 });
 
-describe("formatSegment — context-window-size", () => {
-  it("formats window size compactly with dim color", () => {
-    const result = formatSegment(
-      "context-window-size",
-      segmentInput({ contextUsage: { contextWindow: 200000 } }),
-      identityTheme,
-    );
-    expect(result).toEqual(["200k ctx", "dim"]);
-  });
-
-  it("returns null when contextWindow is undefined", () => {
-    const result = formatSegment(
-      "context-window-size",
-      segmentInput(),
-      identityTheme,
-    );
-    expect(result).toBeNull();
-  });
-});
-
 describe("formatSegment — used-tokens", () => {
   it("formats total tokens compactly with dim color", () => {
     const result = formatSegment(

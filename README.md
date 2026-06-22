@@ -71,7 +71,6 @@ You can compose the footer from these segment IDs:
 - `run-state`
 - `context-remaining`
 - `context-used`
-- `context-window-size`
 - `used-tokens`
 - `total-input-tokens`
 - `total-output-tokens`

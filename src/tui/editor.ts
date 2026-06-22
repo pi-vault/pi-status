@@ -56,11 +56,6 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     description: "Percentage of context window used (omitted when unknown)",
   },
   {
-    id: "context-window-size",
-    label: "Context Window",
-    description: "Total context window size in tokens (omitted when unknown)",
-  },
-  {
     id: "used-tokens",
     label: "Used Tokens",
     description: "Total tokens used in session (omitted when zero)",

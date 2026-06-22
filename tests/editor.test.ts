@@ -470,7 +470,7 @@ describe("statusline editor interactions", () => {
 
   it("keeps left/right as no-ops for the policy row and discovered rows", () => {
     const { editor, done } = makeEditor({ discovered: ["alpha-status"] });
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
     editor.handleInput(LEFT);
     editor.handleInput(RIGHT);
     editor.handleInput(DOWN);
@@ -614,7 +614,7 @@ describe("statusline editor live preview and layout", () => {
         filter: { mode: "all", hidden: [] },
       }),
     });
-    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 15; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
@@ -775,7 +775,7 @@ describe("statusline editor discovered-status filter persistence", () => {
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
@@ -795,7 +795,7 @@ describe("statusline editor discovered-status filter persistence", () => {
       discovered: ["alpha-status", "beta-status"],
     });
 
-    for (let i = 0; i < 17; i++) editor.handleInput(DOWN);
+    for (let i = 0; i < 16; i++) editor.handleInput(DOWN);
     editor.handleInput(SPACE);
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
