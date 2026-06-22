@@ -123,7 +123,7 @@ export function renderWithFactory(
     ) => { render: (width: number) => string[] }
   )(
     { requestRender: () => {} },
-    { fg: (_c: string, t: string) => t },
+    { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
     {
       getGitBranch: () => options.gitBranch ?? null,
       getExtensionStatuses: () => new Map(),

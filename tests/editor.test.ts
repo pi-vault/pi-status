@@ -29,6 +29,7 @@ const HIGHLIGHT_THEME: StatusLineTheme = {
   fg: (color, text) => (color === "accent" ? `«${text}»` : text),
   bold: (text) => `**${text}**`,
   dim: (text) => text,
+  rainbow: (text) => text,
 };
 
 function makeConfig(overrides?: Partial<PiStatusConfig>): PiStatusConfig {
@@ -778,6 +779,7 @@ function makeSpyTheme(): {
       calls.dim.push([text]);
       return text;
     },
+    rainbow: (text) => text,
   };
   return { theme, calls };
 }
@@ -860,6 +862,7 @@ describe("statusline editor theme plumbing", () => {
       fg: (_color, text) => `\x1b[33m${text}\x1b[0m`,
       bold: (text) => `\x1b[1m${text}\x1b[22m`,
       dim: (text) => `\x1b[2m${text}\x1b[22m`,
+      rainbow: (text) => text,
     };
     for (const width of [1, 5, 30, 80, 200]) {
       const { editor } = makeEditor({
@@ -892,6 +895,7 @@ describe("statusline editor live theme sync", () => {
       },
       bold: (text) => `[B]${text}[/B]`,
       dim: (text) => text,
+      rainbow: (text) => text,
     };
 
     const editor = createStatusLineEditor({
