@@ -137,7 +137,6 @@ export default function createExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const snap = runtimeState.snapshot();
       const discovered = [...footerProviderState.extensionStatuses.keys()].sort(
         (a, b) => a.localeCompare(b),
       );
