@@ -59,6 +59,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     extensionStatuses: new Map(),
   };
 
+  function resetFooterProviderState(): void {
+    footerProviderState.gitBranch = null;
+    footerProviderState.extensionStatuses = new Map();
+  }
+
   function refreshFooterProviderState(footerData: FooterDataLike): void {
     footerProviderState.gitBranch = footerData.getGitBranch();
     footerProviderState.extensionStatuses = new Map(
@@ -195,6 +200,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", (_event, ctx) => {
+    resetFooterProviderState();
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
     runtimeState.update({
@@ -205,6 +211,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_tree", (_event, ctx) => {
+    resetFooterProviderState();
     runtimeState.update({ type: "session_tree", ctx });
     runtimeState.update({
       type: "config_reload",
@@ -226,6 +233,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    resetFooterProviderState();
     runtimeState.update({ type: "session_shutdown" });
     usageRuntime.setOnChange(undefined);
     if (ctx.hasUI) ctx.ui.setFooter(undefined);
