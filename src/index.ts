@@ -29,6 +29,11 @@ type FooterFactory = (
   footerData: FooterDataLike,
 ) => FooterComponent;
 
+type FooterProviderState = {
+  gitBranch: string | null;
+  extensionStatuses: Map<string, string>;
+};
+
 const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
   render(): string[] {
     return [];
@@ -49,6 +54,17 @@ export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig().config);
 
   const usageRuntime = createUsageRuntime(pi);
+  const footerProviderState: FooterProviderState = {
+    gitBranch: null,
+    extensionStatuses: new Map(),
+  };
+
+  function refreshFooterProviderState(footerData: FooterDataLike): void {
+    footerProviderState.gitBranch = footerData.getGitBranch();
+    footerProviderState.extensionStatuses = new Map(
+      footerData.getExtensionStatuses().entries(),
+    );
+  }
 
   function installFooter(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
@@ -58,13 +74,8 @@ export default function createExtension(pi: ExtensionAPI): void {
       runtimeState.onInvalidate(requestRender);
       usageRuntime.setOnChange(requestRender);
       const unsubscribe = footerData.onBranchChange?.(() => {
-        runtimeState.update({
-          type: "branch_change",
-          gitBranch: footerData.getGitBranch(),
-          extensionStatuses: new Map(
-            footerData.getExtensionStatuses().entries(),
-          ),
-        });
+        refreshFooterProviderState(footerData);
+        requestRender();
       });
 
       return {
@@ -77,6 +88,8 @@ export default function createExtension(pi: ExtensionAPI): void {
           requestRender();
         },
         render(width: number) {
+          refreshFooterProviderState(footerData);
+
           const snap = runtimeState.snapshot();
           const activeCtx = snap.ctx ?? ctx;
           const statusTheme = fromPiTheme(theme);
@@ -84,14 +97,14 @@ export default function createExtension(pi: ExtensionAPI): void {
             model: activeCtx.model,
             cwd: activeCtx.cwd,
             thinkingLevel: snap.thinkingLevel,
-            gitBranch: snap.gitBranch,
+            gitBranch: footerProviderState.gitBranch,
             isIdle: activeCtx.isIdle(),
             hasPendingMessages: activeCtx.hasPendingMessages(),
             contextUsage: activeCtx.getContextUsage(),
             branch: activeCtx.sessionManager.getBranch() as unknown[],
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
-            extensionStatuses: snap.extensionStatuses,
+            extensionStatuses: footerProviderState.extensionStatuses,
           });
           const { segments, extensionStatusText } = resolveFooter(
             snapshot,
@@ -125,8 +138,8 @@ export default function createExtension(pi: ExtensionAPI): void {
       }
 
       const snap = runtimeState.snapshot();
-      const discovered = [...snap.extensionStatuses.keys()].sort((a, b) =>
-        a.localeCompare(b),
+      const discovered = [...footerProviderState.extensionStatuses.keys()].sort(
+        (a, b) => a.localeCompare(b),
       );
 
       let result: PiStatusConfig | null = null;
@@ -143,14 +156,14 @@ export default function createExtension(pi: ExtensionAPI): void {
               model: activeCtx.model,
               cwd: activeCtx.cwd,
               thinkingLevel: editorSnap.thinkingLevel,
-              gitBranch: editorSnap.gitBranch,
+              gitBranch: footerProviderState.gitBranch,
               isIdle: activeCtx.isIdle(),
               hasPendingMessages: activeCtx.hasPendingMessages(),
               contextUsage: activeCtx.getContextUsage(),
               branch: activeCtx.sessionManager.getBranch() as unknown[],
               sessionId: activeCtx.sessionManager.getSessionId(),
               usageState: usageRuntime.getState(),
-              extensionStatuses: editorSnap.extensionStatuses,
+              extensionStatuses: footerProviderState.extensionStatuses,
             });
             return createStatusLineEditor({
               config: editorSnap.config,
