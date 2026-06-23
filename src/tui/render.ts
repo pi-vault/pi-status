@@ -24,6 +24,11 @@ export type ThemeLike = {
   rainbow: (text: string) => string;
 };
 
+export interface ResolvedSegment {
+  text: string;
+  color: FooterRenderColor | null;
+}
+
 export type ModelLike = {
   id?: string;
   name?: string;
@@ -113,7 +118,7 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
-function formatExtensionStatuses(
+export function formatExtensionStatuses(
   input: FooterRenderInput,
   theme: ThemeLike,
 ): string | null {
