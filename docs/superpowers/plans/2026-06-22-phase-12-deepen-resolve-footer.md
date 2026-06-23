@@ -2,15 +2,29 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename `snapshot.ts` to `resolve-footer.ts` and add a `resolveFooter()` function that owns the full decision chain (segment resolution + null dropping + extension status filtering), leaving `buildFooterLine` as a thin color-applier and joiner.
+**Goal:** Rename `snapshot.ts` to `resolve-footer.ts` and add a `resolveFooter()` function that owns the full decision chain (segment resolution + null dropping + extension status filtering). The main render path in `index.ts` switches to `resolveFooter` → `buildFooterLineFromResolved`. The old `buildFooterLine` stays exported for the editor preview path.
 
-**Architecture:** The new `resolveFooter` takes a snapshot + config + theme, returns `ResolvedSegment[]` (ready-to-paint text/color pairs). `buildFooterLine` shrinks to: apply colors, join with separator, truncate. This deepens the module by giving it real responsibility instead of being a passthrough.
+**Architecture:**
+
+- `ResolvedSegment` type lives in `render.ts` (avoids circular deps — resolve-footer.ts imports from render.ts, never the reverse)
+- `resolveFooter` returns `{ segments: ResolvedSegment[], extensionStatusText: string | null }` — owns both segment resolution and extension status formatting
+- `buildFooterLineFromResolved` takes individual params (segments, extensionStatusText, theme, width) — pure paint + join + truncate
+- `formatExtensionStatuses` gets exported from render.ts so resolveFooter can call it
+- `buildFooterLine` stays unchanged for editor preview backward compat
+
+**Dependency direction (no cycles):**
+
+```
+resolve-footer.ts → render.ts → formatters.ts
+                  → shared/types.ts
+```
 
 **Tech Stack:** TypeScript 6, Vitest 4, Biome 2.5, pnpm
 
-**Branch:** `refactor/deepen-resolve-footer`
+**Branch:** `20260622-phase-12-deepen-resolve-footer`
 
 **Verification:**
+
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
@@ -20,9 +34,9 @@ pnpm lint && pnpm typecheck && pnpm test
 ## File Structure
 
 ```
+src/tui/render.ts            (adds ResolvedSegment type, exports formatExtensionStatuses, adds buildFooterLineFromResolved)
 src/core/resolve-footer.ts   (renamed from snapshot.ts, adds resolveFooter)
-src/tui/render.ts            (buildFooterLine slimmed OR new thin buildFooterLineFromResolved)
-src/index.ts                 (updated imports)
+src/index.ts                 (wired to resolveFooter → buildFooterLineFromResolved)
 tests/core/resolve-footer.test.ts (renamed from snapshot.test.ts, adds resolveFooter tests)
 ```
 
@@ -31,6 +45,7 @@ tests/core/resolve-footer.test.ts (renamed from snapshot.test.ts, adds resolveFo
 ### Task 1: Rename snapshot files
 
 **Files:**
+
 - Rename: `src/core/snapshot.ts` → `src/core/resolve-footer.ts`
 - Rename: `tests/core/snapshot.test.ts` → `tests/core/resolve-footer.test.ts`
 - Modify: `src/index.ts`
@@ -50,24 +65,33 @@ git mv tests/core/snapshot.test.ts tests/core/resolve-footer.test.ts
 
 - [ ] **Step 3: Update import in `src/index.ts`**
 
-Change line 6:
+Change:
+
 ```ts
 import { buildSnapshot } from "./core/snapshot.ts";
 ```
+
 To:
+
 ```ts
 import { buildSnapshot } from "./core/resolve-footer.ts";
 ```
 
 - [ ] **Step 4: Update import in `tests/core/resolve-footer.test.ts`**
 
-Change line 2:
+Change:
+
 ```ts
 import { buildSnapshot, type SnapshotInput } from "../../src/core/snapshot.ts";
 ```
+
 To:
+
 ```ts
-import { buildSnapshot, type SnapshotInput } from "../../src/core/resolve-footer.ts";
+import {
+  buildSnapshot,
+  type SnapshotInput,
+} from "../../src/core/resolve-footer.ts";
 ```
 
 - [ ] **Step 5: Run verification**
@@ -75,6 +99,7 @@ import { buildSnapshot, type SnapshotInput } from "../../src/core/resolve-footer
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
+
 Expected: all pass, zero behavior change.
 
 - [ ] **Step 6: Commit**
@@ -90,28 +115,15 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 
 ---
 
-### Task 2: Add ResolvedSegment type and resolveFooter function
+### Task 2: Add ResolvedSegment type to render.ts and export formatExtensionStatuses
 
 **Files:**
-- Modify: `src/core/resolve-footer.ts`
 
-- [ ] **Step 1: Add imports at the top of `src/core/resolve-footer.ts`**
+- Modify: `src/tui/render.ts`
 
-Add after the existing import:
+- [ ] **Step 1: Add ResolvedSegment type**
 
-```ts
-import {
-  buildFooterLine,
-  formatSegment,
-  type FooterRenderColor,
-  type ThemeLike,
-} from "../tui/render.ts";
-import type { PiStatusConfig } from "../shared/types.ts";
-```
-
-- [ ] **Step 2: Add ResolvedSegment type**
-
-Add after the `SnapshotInput` type:
+Add after the `ThemeLike` type (around line 25):
 
 ```ts
 export interface ResolvedSegment {
@@ -120,40 +132,21 @@ export interface ResolvedSegment {
 }
 ```
 
-- [ ] **Step 3: Add resolveFooter function**
+- [ ] **Step 2: Export formatExtensionStatuses**
 
-Add at the bottom of the file:
+Change the existing `function formatExtensionStatuses(` to `export function formatExtensionStatuses(` (add `export` keyword, ~line 116).
 
-```ts
-export function resolveFooter(
-  snapshot: Omit<FooterRenderInput, "segments" | "extensionSegments">,
-  config: PiStatusConfig,
-  theme: ThemeLike,
-): ResolvedSegment[] {
-  const input: FooterRenderInput = {
-    ...snapshot,
-    segments: config.segments,
-    extensionSegments: config.extensionSegments,
-  };
-
-  return input.segments
-    .map((id) => formatSegment(id, input, theme))
-    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
-    .map(([text, color]) => ({ text, color }));
-}
-```
-
-- [ ] **Step 4: Run verification**
+- [ ] **Step 3: Run verification**
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: add resolveFooter function with ResolvedSegment type
+git commit -m "refactor: add ResolvedSegment type and export formatExtensionStatuses
 
 Generated with [Devin](https://devin.ai)
 
@@ -162,26 +155,95 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 
 ---
 
-### Task 3: Add resolveFooter tests
+### Task 3: Add resolveFooter function
 
 **Files:**
+
+- Modify: `src/core/resolve-footer.ts`
+
+- [ ] **Step 1: Add imports at the top of `src/core/resolve-footer.ts`**
+
+Add after the existing import line:
+
+```ts
+import {
+  formatExtensionStatuses,
+  formatSegment,
+  type FooterRenderColor,
+  type ResolvedSegment,
+  type ThemeLike,
+} from "../tui/render.ts";
+import type { PiStatusConfig } from "../shared/types.ts";
+```
+
+Note: Do NOT import `buildFooterLine` — it is not used by resolveFooter.
+
+- [ ] **Step 2: Add resolveFooter function**
+
+Add at the bottom of the file:
+
+```ts
+export function resolveFooter(
+  snapshot: Omit<FooterRenderInput, "segments" | "extensionSegments">,
+  config: PiStatusConfig,
+  theme: ThemeLike,
+): { segments: ResolvedSegment[]; extensionStatusText: string | null } {
+  const input: FooterRenderInput = {
+    ...snapshot,
+    segments: config.segments,
+    extensionSegments: config.extensionSegments,
+  };
+
+  const segments = input.segments
+    .map((id) => formatSegment(id, input, theme))
+    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
+    .map(([text, color]) => ({ text, color }));
+
+  const extensionStatusText = formatExtensionStatuses(input, theme);
+
+  return { segments, extensionStatusText };
+}
+```
+
+- [ ] **Step 3: Run verification**
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "feat: add resolveFooter function owning full decision chain
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+```
+
+---
+
+### Task 4: Add resolveFooter tests
+
+**Files:**
+
 - Modify: `tests/core/resolve-footer.test.ts`
 
-- [ ] **Step 1: Add imports for resolveFooter**
+- [ ] **Step 1: Update imports**
 
-Add at the top of the test file:
+Replace the existing import line with:
 
 ```ts
 import {
   buildSnapshot,
   resolveFooter,
-  type ResolvedSegment,
   type SnapshotInput,
 } from "../../src/core/resolve-footer.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 ```
 
-And add the identityTheme helper:
+Add the identityTheme helper after the `makeInput` function:
 
 ```ts
 const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };
@@ -200,7 +262,8 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result).toEqual([{ text: "idle", color: "dim" }]);
+    expect(result.segments).toEqual([{ text: "idle", color: "dim" }]);
+    expect(result.extensionStatusText).toBeNull();
   });
 
   it("drops null segments (model undefined)", () => {
@@ -210,7 +273,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result).toEqual([{ text: "idle", color: "dim" }]);
+    expect(result.segments).toEqual([{ text: "idle", color: "dim" }]);
   });
 
   it("preserves segment order from config", () => {
@@ -220,11 +283,11 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result[0]).toEqual({ text: "main", color: "warning" });
-    expect(result[1]).toEqual({ text: "idle", color: "dim" });
+    expect(result.segments[0]).toEqual({ text: "main", color: "warning" });
+    expect(result.segments[1]).toEqual({ text: "idle", color: "dim" });
   });
 
-  it("returns empty array when all segments resolve to null", () => {
+  it("returns empty segments when all resolve to null", () => {
     const snapshot = buildSnapshot(
       makeInput({ model: undefined, gitBranch: null }),
     );
@@ -233,7 +296,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result).toEqual([]);
+    expect(result.segments).toEqual([]);
   });
 
   it("handles empty segments array", () => {
@@ -243,7 +306,48 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result).toEqual([]);
+    expect(result.segments).toEqual([]);
+  });
+
+  it("includes extension status text", () => {
+    const snapshot = buildSnapshot(
+      makeInput({
+        extensionStatuses: new Map([["pi-usage", "5h: 60%"]]),
+      }),
+    );
+    const config = {
+      segments: ["run-state" as const],
+      extensionSegments: { hidden: [] },
+    };
+    const result = resolveFooter(snapshot, config, identityTheme);
+    expect(result.extensionStatusText).toBe("5h: 60%");
+  });
+
+  it("filters hidden extension statuses", () => {
+    const snapshot = buildSnapshot(
+      makeInput({
+        extensionStatuses: new Map([
+          ["pi-usage", "5h: 60%"],
+          ["other-ext", "ok"],
+        ]),
+      }),
+    );
+    const config = {
+      segments: ["run-state" as const],
+      extensionSegments: { hidden: ["pi-usage"] },
+    };
+    const result = resolveFooter(snapshot, config, identityTheme);
+    expect(result.extensionStatusText).toBe("ok");
+  });
+
+  it("returns null extensionStatusText when no extension statuses", () => {
+    const snapshot = buildSnapshot(makeInput());
+    const config = {
+      segments: ["run-state" as const],
+      extensionSegments: { hidden: [] },
+    };
+    const result = resolveFooter(snapshot, config, identityTheme);
+    expect(result.extensionStatusText).toBeNull();
   });
 });
 ```
@@ -253,7 +357,8 @@ describe("resolveFooter", () => {
 ```bash
 pnpm test
 ```
-Expected: all pass including 5 new tests.
+
+Expected: all pass including 8 new resolveFooter tests.
 
 - [ ] **Step 4: Commit**
 
@@ -268,18 +373,17 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 
 ---
 
-### Task 4: Add buildFooterLineFromResolved thin joiner
+### Task 5: Add buildFooterLineFromResolved thin joiner
 
 **Files:**
+
 - Modify: `src/tui/render.ts`
 
 - [ ] **Step 1: Add buildFooterLineFromResolved function**
 
-Add at the bottom of `src/tui/render.ts`:
+Add at the bottom of `src/tui/render.ts` (no new imports needed — `ResolvedSegment` is defined locally in this file):
 
 ```ts
-import type { ResolvedSegment } from "../core/resolve-footer.ts";
-
 export function buildFooterLineFromResolved(
   segments: ResolvedSegment[],
   extensionStatusText: string | null,
@@ -314,32 +418,92 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 
 ---
 
-### Task 5: Wire resolveFooter in index.ts render path (optional optimization)
+### Task 6: Wire resolveFooter into index.ts render path
 
-This task makes the render path use the new `resolveFooter` → `buildFooterLineFromResolved` flow. The old `buildFooterLine` stays for backward compat (used by editor preview).
+The main render path switches to `resolveFooter` → `buildFooterLineFromResolved`. The editor preview path in `editor.ts` continues using `buildFooterLine` directly (no changes to editor.ts).
 
 **Files:**
+
 - Modify: `src/index.ts`
 
-- [ ] **Step 1: Update footer render in index.ts**
+- [ ] **Step 1: Update imports in `src/index.ts`**
 
-In the `render(width)` function inside `installFooter`, after `buildSnapshot(...)`, add the new path:
+Change:
+
+```ts
+import { buildSnapshot } from "./core/resolve-footer.ts";
+```
+
+To:
 
 ```ts
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
-import { buildFooterLine, buildFooterLineFromResolved, formatExtensionStatuses } from "./tui/render.ts";
 ```
 
-Note: `formatExtensionStatuses` is currently not exported. For now, keep using `buildFooterLine` in the main render path — the new function is available for future use when Phase 4 (Runtime State Machine) consolidates the render flow.
+Change:
 
-Actually, let's keep the current `buildFooterLine` call unchanged in `index.ts` for this phase. The key deliverable is that `resolveFooter` exists as a tested, usable function. Phase 4 will wire the full new flow.
+```ts
+import { buildFooterLine } from "./tui/render.ts";
+```
 
-- [ ] **Step 2: Run verification (no changes needed if keeping buildFooterLine)**
+To:
+
+```ts
+import { buildFooterLineFromResolved } from "./tui/render.ts";
+```
+
+Note: `buildFooterLine` is no longer imported in `index.ts`. The editor imports it directly from render.ts in its own file.
+
+- [ ] **Step 2: Update render function in `installFooter`**
+
+In the `render(width)` method (around line 94-122), replace the footer line construction:
+
+Change:
+
+```ts
+const line = buildFooterLine(
+  {
+    ...snapshot,
+    extensionSegments: state.config.extensionSegments,
+    segments: state.config.segments,
+  },
+  fromPiTheme(theme),
+  width,
+);
+```
+
+To:
+
+```ts
+const statusTheme = fromPiTheme(theme);
+const { segments, extensionStatusText } = resolveFooter(
+  snapshot,
+  state.config,
+  statusTheme,
+);
+const line = buildFooterLineFromResolved(
+  segments,
+  extensionStatusText,
+  statusTheme,
+  width,
+);
+```
+
+- [ ] **Step 3: Run verification**
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-- [ ] **Step 3: Commit (skip if no changes)**
+Expected: all pass, identical runtime behavior.
 
-No commit needed — this task is informational. The refactoring payoff comes in Phase 14 (Runtime State Machine).
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: wire resolveFooter into main render path
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+```
