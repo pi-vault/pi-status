@@ -254,7 +254,7 @@ describe("resolveFooter", () => {
   it("handles empty segments array", () => {
     const snapshot = buildSnapshot(makeInput());
     const config = {
-      segments: [] as const,
+      segments: [] as Parameters<typeof resolveFooter>[1]["segments"],
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
