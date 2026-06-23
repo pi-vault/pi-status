@@ -55,3 +55,9 @@ export function isKnownSegment(value: string): value is StatusLineSegmentId {
 export function isUsageSegment(id: StatusLineSegmentId): boolean {
   return USAGE_SEGMENTS.has(id);
 }
+
+export interface SettingsStore {
+  exists(path: string): boolean;
+  read(path: string): string | null;
+  write(path: string, data: string): void;
+}
