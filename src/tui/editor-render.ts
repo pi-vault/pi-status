@@ -5,6 +5,7 @@ import type { StatusLineTheme } from "./theme.ts";
 import {
   type EditorState,
   type InteractiveRow,
+  collectHiddenStatuses,
   getFilteredRows,
   isEnabledSegment,
   SEGMENT_METADATA,
@@ -172,9 +173,10 @@ export function renderEditor(
   const config = {
     segments: state.enabledSegments,
     extensionSegments: {
-      hidden: state.orderedStatuses.filter(
-        (k) => !state.shownStatuses.has(k),
-      ),
+      hidden: collectHiddenStatuses({
+        discoveredKeys: state.orderedStatuses,
+        shownKeys: state.shownStatuses,
+      }),
     },
   };
   const preview = buildFooterLine(

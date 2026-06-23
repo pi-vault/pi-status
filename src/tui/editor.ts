@@ -35,7 +35,7 @@ export function createStatusLineEditor(options: {
     const result = editorReducer(state, action);
     if (result.type === "done") {
       options.done(result.config);
-    } else {
+    } else if (result.state !== state) {
       state = result.state;
       options.requestRender();
     }

@@ -106,6 +106,40 @@ describe("editorReducer — toggle", () => {
       expect(result.state.enabledSegments.length).toBe(2);
     }
   });
+
+  it("toggle hides a shown extension status", () => {
+    const state = makeState({ discovered: ["ext-a", "ext-b"] });
+    const list = getFilteredRows(state);
+    const statusIdx = list.findIndex(
+      (r) => r.type === "status" && r.key === "ext-a",
+    );
+    const positioned = { ...state, selectedIndex: statusIdx };
+    expect(positioned.shownStatuses.has("ext-a")).toBe(true);
+    const result = editorReducer(positioned, { type: "toggle" });
+    if (result.type === "next") {
+      expect(result.state.shownStatuses.has("ext-a")).toBe(false);
+    }
+  });
+
+  it("toggle shows a hidden extension status", () => {
+    const state = initEditorState(
+      {
+        segments: ["model"],
+        extensionSegments: { hidden: ["ext-a"] },
+      },
+      ["ext-a"],
+    );
+    const list = getFilteredRows(state);
+    const statusIdx = list.findIndex(
+      (r) => r.type === "status" && r.key === "ext-a",
+    );
+    const positioned = { ...state, selectedIndex: statusIdx };
+    expect(positioned.shownStatuses.has("ext-a")).toBe(false);
+    const result = editorReducer(positioned, { type: "toggle" });
+    if (result.type === "next") {
+      expect(result.state.shownStatuses.has("ext-a")).toBe(true);
+    }
+  });
 });
 
 describe("editorReducer — reorder", () => {
