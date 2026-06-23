@@ -11,6 +11,7 @@
 **Branch:** `refactor/segment-formatter-registry`
 
 **Verification:**
+
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
@@ -33,6 +34,7 @@ src/tui/
 ### Task 1: Extract render-utils.ts
 
 **Files:**
+
 - Create: `src/tui/render-utils.ts`
 - Modify: `src/tui/render.ts`
 
@@ -42,6 +44,7 @@ src/tui/
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import type { FooterRenderColor } from "./render.ts";
 
 export function formatCompactNumber(value: number): string {
   if (value < 1000) return String(Math.trunc(value));
@@ -84,13 +87,41 @@ export function normalizeThinkingLevel(level: string): string {
       return level;
   }
 }
+
+export type ThinkingColor = Exclude<
+  FooterRenderColor,
+  "accent" | "dim" | "success" | "warning" | "error"
+>;
+
+/** Map thinking level to color — progressive warmth: off (dim gray) → high (gold). */
+export function thinkingLevelColor(level: string): ThinkingColor {
+  switch (level) {
+    case "off":
+      return "thinkingOff";
+    case "minimal":
+      return "thinkingMinimal";
+    case "low":
+      return "thinkingLow";
+    case "medium":
+      return "thinkingMedium";
+    case "high":
+      return "thinkingHigh";
+    default:
+      // Unknown levels fall back to the coolest color. If new levels are
+      // added upstream, add a case here to preserve the warmth gradient.
+      return "thinkingOff";
+  }
+}
 ```
+
+> **Note:** `render-utils.ts` imports `FooterRenderColor` as a type-only import from `render.ts`. This creates a type-level circular reference (`render.ts` → `render-utils.ts` → `render.ts`), but TypeScript handles type-only circular imports without issue since they are erased at runtime.
 
 - [ ] **Step 2: Update `src/tui/render.ts` — remove moved functions, add imports + re-exports**
 
-Remove the function bodies of `formatCompactNumber`, `abbreviateHomeDir`, `findProjectRootLabel`, `normalizeThinkingLevel` from `render.ts`.
+Remove the function bodies of `formatCompactNumber`, `abbreviateHomeDir`, `findProjectRootLabel`, `normalizeThinkingLevel`, `thinkingLevelColor` and the `ThinkingColor` type alias from `render.ts`.
 
 Remove the now-unused imports from `render.ts`:
+
 ```ts
 // REMOVE these lines:
 import { existsSync } from "node:fs";
@@ -99,16 +130,21 @@ import { basename, dirname, join } from "node:path";
 ```
 
 Add at the top of `render.ts` (after the `truncateToWidth` import):
+
 ```ts
 import {
   abbreviateHomeDir,
   findProjectRootLabel,
   formatCompactNumber,
   normalizeThinkingLevel,
+  thinkingLevelColor,
 } from "./render-utils.ts";
 ```
 
+`thinkingLevelColor` is needed by `formatModelWithReasoning` which remains in `render.ts`.
+
 Add re-exports for backward compatibility (after the `DEFAULT_SEGMENTS` re-export on line 67):
+
 ```ts
 export {
   abbreviateHomeDir,
@@ -123,6 +159,7 @@ export {
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
+
 Expected: all pass, zero behavior change. Tests import from `render.ts` which re-exports.
 
 - [ ] **Step 4: Commit**
@@ -141,18 +178,24 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 ### Task 2: Create formatters.ts with all 14 formatters
 
 **Files:**
+
 - Create: `src/tui/formatters.ts`
 
 - [ ] **Step 1: Create `src/tui/formatters.ts`**
 
 ```ts
 import type { StatusLineSegmentId } from "../shared/types.ts";
-import type { FooterRenderColor, FooterRenderInput, ThemeLike } from "./render.ts";
+import type {
+  FooterRenderColor,
+  FooterRenderInput,
+  ThemeLike,
+} from "./render.ts";
 import {
   abbreviateHomeDir,
   findProjectRootLabel,
   formatCompactNumber,
   normalizeThinkingLevel,
+  thinkingLevelColor,
 } from "./render-utils.ts";
 
 export type SegmentFormatter = (
@@ -168,32 +211,7 @@ export const RATE_ERROR_THRESHOLD = 90;
 export const REMAINING_WARNING_THRESHOLD = 40;
 export const REMAINING_ERROR_THRESHOLD = 20;
 
-type ThinkingColor = Exclude<
-  FooterRenderColor,
-  "accent" | "dim" | "success" | "warning" | "error"
->;
-
-/** Map thinking level to color — progressive warmth: off (dim gray) → high (gold). */
-function thinkingLevelColor(level: string): ThinkingColor {
-  switch (level) {
-    case "off":
-      return "thinkingOff";
-    case "minimal":
-      return "thinkingMinimal";
-    case "low":
-      return "thinkingLow";
-    case "medium":
-      return "thinkingMedium";
-    case "high":
-      return "thinkingHigh";
-    default:
-      return "thinkingOff";
-  }
-}
-
-function contextUsedColor(
-  percent: number,
-): "success" | "warning" | "error" {
+function contextUsedColor(percent: number): "success" | "warning" | "error" {
   if (percent < CONTEXT_WARNING_THRESHOLD) return "success";
   if (percent < CONTEXT_ERROR_THRESHOLD) return "warning";
   return "error";
@@ -211,8 +229,7 @@ function getRateWindow(
   input: FooterRenderInput,
   key: "fiveHour" | "weekly",
 ): { usedPercent: number } | null {
-  const snapshot =
-    input.usageState?.compatibility?.currentLiveProviderSnapshot;
+  const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
   const window = snapshot?.windows.find((item) => item.key === key);
   if (
     !window ||
@@ -352,9 +369,7 @@ export function formatSessionId(
   input: FooterRenderInput,
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
-  return input.sessionId
-    ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"]
-    : null;
+  return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
 }
 
 export function formatFiveHourLimit(
@@ -416,6 +431,7 @@ export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>(
 ```bash
 pnpm typecheck
 ```
+
 Expected: PASS (file is valid but not yet wired in).
 
 - [ ] **Step 3: Commit**
@@ -434,6 +450,7 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 ### Task 3: Wire formatSegment to use the registry
 
 **Files:**
+
 - Modify: `src/tui/render.ts`
 
 - [ ] **Step 1: Replace formatSegment switch body with registry lookup**
@@ -454,33 +471,23 @@ export function formatSegment(
 
 - [ ] **Step 2: Remove dead code from render.ts**
 
-Remove these functions that now live in `formatters.ts`:
+Remove these functions that now live in `formatters.ts` (they are private helpers only used by the switch body):
+
 - `contextUsedColor` (lines 126–130)
 - `contextRemainingColor` (lines 132–138)
 - `getRateWindow` (lines 140–150)
 - `rateColor` (lines 152–156)
-- `thinkingLevelColor` (lines 161–178)
 
-Remove the `ThinkingColor` type alias (line 158).
+Note: `thinkingLevelColor` and `ThinkingColor` were already moved to `render-utils.ts` in Task 1 and imported back. They remain accessible to `formatModelWithReasoning`.
 
-Keep `formatModelWithReasoning` as a re-export for backward compat — the test file imports it directly. Add:
-```ts
-export { formatModelWithReasoningSegment as formatModelWithReasoning } from "./formatters.ts";
-```
-
-Wait — the existing `formatModelWithReasoning` in render.ts has a different signature (takes `model`, `thinkingLevel`, `theme` as separate args). The test imports it. We need to keep the wrapper.
-
-Keep the existing `formatModelWithReasoning` export function in render.ts as-is (it's used by tests directly with a different signature). The internal formatter `formatModelWithReasoningSegment` in formatters.ts calls the same logic but reads from `input`. This means we have slight duplication — acceptable since the exported wrapper is a public API tested separately.
-
-Actually, looking more carefully, the `formatModelWithReasoning` in render.ts (line 88–104) is a standalone utility with signature `(model, thinkingLevel, theme) => [text, color] | null`. The `formatModelWithReasoningSegment` in formatters.ts uses the same logic but reads from `input.model` and `input.thinkingLevel`. Keep both — one is the public utility, the other is the internal formatter.
-
-So: keep `formatModelWithReasoning` function in render.ts (lines 88–104). Only remove the switch body and helper functions listed above.
+Keep `formatModelWithReasoning` function in render.ts (lines 88–104) as-is — it's a public API with a different signature `(model, thinkingLevel, theme)` that tests import directly. The internal `formatModelWithReasoningSegment` in `formatters.ts` duplicates the logic but reads from `input.model` / `input.thinkingLevel`. This minor duplication is acceptable since the exported wrapper is a separately-tested public API.
 
 - [ ] **Step 3: Run verification**
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
+
 Expected: all 1024+ lines of render tests pass unchanged. The `formatSegment` interface hasn't changed.
 
 - [ ] **Step 4: Commit**
@@ -499,11 +506,13 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 ### Task 4: Final cleanup — verify no dead code remains
 
 **Files:**
+
 - Modify: `src/tui/render.ts` (if needed)
 
 - [ ] **Step 1: Review render.ts for orphaned imports/code**
 
 After the previous steps, `src/tui/render.ts` should contain:
+
 1. Import from `@earendil-works/pi-tui` (`truncateToWidth`)
 2. Import from `../shared/types.ts` (`DEFAULT_SEGMENTS`, `ExtensionSegments`, `StatusLineSegmentId`)
 3. Import from `./render-utils.ts` (re-exported utilities)
@@ -522,6 +531,7 @@ Remove any imports no longer used (e.g., `homedir` from `node:os` if it was only
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
+
 Expected: all pass.
 
 - [ ] **Step 3: Commit (only if changes were made)**
