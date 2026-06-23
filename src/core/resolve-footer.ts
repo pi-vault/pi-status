@@ -1,14 +1,12 @@
-import type {
-  FooterRenderInput,
-  FooterRenderColor,
-  ModelLike,
-  ResolvedSegment,
-  RunState,
-  ThemeLike,
-} from "../tui/render.ts";
 import {
   formatExtensionStatuses,
   formatSegment,
+  type FooterRenderColor,
+  type FooterRenderInput,
+  type ModelLike,
+  type ResolvedSegment,
+  type RunState,
+  type ThemeLike,
 } from "../tui/render.ts";
 import type { PiStatusConfig } from "../shared/types.ts";
 
