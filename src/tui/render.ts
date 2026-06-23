@@ -160,16 +160,14 @@ export function buildFooterLine(
   theme: ThemeLike,
   width: number,
 ): string {
-  const parts = input.segments
+  const segments = input.segments
     .map((id) => formatSegment(id, input, theme))
     .filter((x): x is [string, FooterRenderColor | null] => x !== null)
-    .map(([text, color]) => (color ? theme.fg(color, text) : text));
+    .map(([text, color]) => ({ text, color }));
 
-  const extStatus = formatExtensionStatuses(input, theme);
-  if (extStatus) parts.push(extStatus);
+  const extensionStatusText = formatExtensionStatuses(input, theme);
 
-  const line = parts.join(theme.fg("dim", " · "));
-  return truncateToWidth(line, width);
+  return buildFooterLineFromResolved(segments, extensionStatusText, theme, width);
 }
 
 export function buildFooterLineFromResolved(
