@@ -4,13 +4,15 @@
 
 **Goal:** Extract mutable state management from `src/index.ts` into a formal event-driven state machine, making state transitions explicit and testable without mocking the ExtensionAPI.
 
-**Architecture:** New `src/core/runtime-state.ts` module with a `RuntimeStateMachine` that accepts typed events and produces snapshots. Event handlers in `index.ts` become one-line adapters. The state machine fires `onInvalidate` when state changes, triggering re-render.
+**Architecture:** Hybrid state machine in `src/core/runtime-state.ts`. The state machine owns **discrete state** (ctx reference, config, thinkingLevel, gitBranch, extensionStatuses) that changes at well-defined event boundaries. Render reads **volatile queries** (isIdle, hasPendingMessages, contextUsage, branch, sessionId) live from the ctx reference stored in the state machine. Event handlers in `index.ts` become thin adapters. The state machine fires `onInvalidate` when state changes, triggering re-render.
+
+**Spec:** `docs/superpowers/specs/2026-06-23-runtime-state-machine-design.md`
 
 **Tech Stack:** TypeScript 6, Vitest 4, Biome 2.5, pnpm
 
-**Branch:** `refactor/runtime-state-machine`
+**Branch:** `20260623-phase-14-runtime-state-machine`
 
-**Depends on:** Phase 12 (resolve-footer must exist)
+**Depends on:** Phase 12 (resolve-footer), Phase 13 (editor pure reducer)
 
 **Verification:**
 ```bash
@@ -22,11 +24,20 @@ pnpm lint && pnpm typecheck && pnpm test
 ## File Structure
 
 ```
-src/core/runtime-state.ts       (NEW: RuntimeStateMachine, events, snapshot type)
-src/index.ts                    (slimmed: uses state machine, thin event adapters)
+src/core/runtime-state.ts        (NEW ~50 lines: events, snapshot, createRuntimeStateMachine)
+src/index.ts                     (MODIFIED: uses state machine, thin event adapters)
 tests/core/runtime-state.test.ts (NEW: pure state transition tests)
-tests/index.test.ts             (existing integration tests — unchanged)
+tests/index.test.ts              (existing integration tests — unchanged)
 ```
+
+### Key design decisions
+
+- Events carry `ctx: ExtensionContext` directly — the state machine stores the reference, not individual fields.
+- `RuntimeSnapshot` has 5 fields: `ctx`, `config`, `thinkingLevel`, `gitBranch`, `extensionStatuses`.
+- Render reads volatile values (`isIdle()`, `hasPendingMessages()`, `getContextUsage()`, `getBranch()`, `getSessionId()`) live from `snap.ctx` at render time.
+- `branch_change` is dispatched from the `onBranchChange` callback, not inside `render()`.
+- `config_reload` is dispatched by callers after calling `loadConfig()` — keeps file I/O out of the state machine.
+- The render path uses the Phase 12 pipeline: `buildSnapshot()` → `resolveFooter()` → `buildFooterLineFromResolved()`.
 
 ---
 
@@ -38,53 +49,27 @@ tests/index.test.ts             (existing integration tests — unchanged)
 - [ ] **Step 1: Write the module**
 
 ```ts
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { PiStatusConfig } from "../shared/types.ts";
-import type { FooterRenderInput, ModelLike } from "../tui/render.ts";
 
 export type RuntimeEvent =
-  | {
-      type: "session_start";
-      cwd: string;
-      model?: ModelLike;
-      sessionId: string;
-      branch: unknown[];
-      isIdle: boolean;
-      hasPendingMessages: boolean;
-      contextUsage: FooterRenderInput["contextUsage"];
-    }
-  | {
-      type: "session_tree";
-      cwd: string;
-      model?: ModelLike;
-      sessionId: string;
-      branch: unknown[];
-      isIdle: boolean;
-      hasPendingMessages: boolean;
-      contextUsage: FooterRenderInput["contextUsage"];
-    }
-  | { type: "model_selected"; model?: ModelLike }
-  | { type: "thinking_level_changed"; level: string }
-  | { type: "usage_update"; state: FooterRenderInput["usageState"] }
+  | { type: "session_start"; ctx: ExtensionContext }
+  | { type: "session_tree"; ctx: ExtensionContext }
+  | { type: "model_select"; ctx: ExtensionContext }
+  | { type: "thinking_level_changed"; ctx: ExtensionContext; level: string }
+  | { type: "session_shutdown" }
+  | { type: "config_reload"; config: PiStatusConfig }
   | {
       type: "branch_change";
       gitBranch: string | null;
       extensionStatuses: Map<string, string>;
-    }
-  | { type: "config_reload"; config: PiStatusConfig }
-  | { type: "shutdown" };
+    };
 
 export interface RuntimeSnapshot {
+  ctx: ExtensionContext | undefined;
   config: PiStatusConfig;
-  model?: ModelLike;
-  cwd: string;
   thinkingLevel: string;
   gitBranch: string | null;
-  isIdle: boolean;
-  hasPendingMessages: boolean;
-  contextUsage?: FooterRenderInput["contextUsage"];
-  branch: unknown[];
-  sessionId?: string;
-  usageState?: FooterRenderInput["usageState"];
   extensionStatuses: Map<string, string>;
 }
 
@@ -98,17 +83,10 @@ export interface RuntimeStateMachine {
 export function createRuntimeStateMachine(
   initialConfig: PiStatusConfig,
 ): RuntimeStateMachine {
+  let ctx: ExtensionContext | undefined;
   let config = initialConfig;
-  let model: ModelLike | undefined;
-  let cwd = "";
   let thinkingLevel = "medium";
   let gitBranch: string | null = null;
-  let isIdle = true;
-  let hasPendingMessages = false;
-  let contextUsage: FooterRenderInput["contextUsage"];
-  let branch: unknown[] = [];
-  let sessionId: string | undefined;
-  let usageState: FooterRenderInput["usageState"];
   let extensionStatuses = new Map<string, string>();
   let listener: (() => void) | undefined;
 
@@ -121,55 +99,28 @@ export function createRuntimeStateMachine(
       switch (event.type) {
         case "session_start":
         case "session_tree":
-          cwd = event.cwd;
-          model = event.model;
-          sessionId = event.sessionId;
-          branch = event.branch;
-          isIdle = event.isIdle;
-          hasPendingMessages = event.hasPendingMessages;
-          contextUsage = event.contextUsage;
-          break;
-        case "model_selected":
-          model = event.model;
+        case "model_select":
+          ctx = event.ctx;
           break;
         case "thinking_level_changed":
+          ctx = event.ctx;
           thinkingLevel = event.level;
           break;
-        case "usage_update":
-          usageState = event.state;
+        case "session_shutdown":
+          ctx = undefined;
+          break;
+        case "config_reload":
+          config = event.config;
           break;
         case "branch_change":
           gitBranch = event.gitBranch;
           extensionStatuses = event.extensionStatuses;
           break;
-        case "config_reload":
-          config = event.config;
-          break;
-        case "shutdown":
-          model = undefined;
-          cwd = "";
-          sessionId = undefined;
-          branch = [];
-          extensionStatuses = new Map();
-          break;
       }
       invalidate();
     },
     snapshot(): RuntimeSnapshot {
-      return {
-        config,
-        model,
-        cwd,
-        thinkingLevel,
-        gitBranch,
-        isIdle,
-        hasPendingMessages,
-        contextUsage,
-        branch,
-        sessionId,
-        usageState,
-        extensionStatuses,
-      };
+      return { ctx, config, thinkingLevel, gitBranch, extensionStatuses };
     },
     onInvalidate(cb: (() => void) | undefined): void {
       listener = cb;
@@ -208,8 +159,11 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 
 - [ ] **Step 1: Write tests**
 
+The tests use a `stubCtx` helper that creates a minimal object typed as `ExtensionContext`. The state machine treats ctx as an opaque reference, so only identity equality matters.
+
 ```ts
 import { describe, expect, it, vi } from "vitest";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createRuntimeStateMachine } from "../../src/core/runtime-state.ts";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 
@@ -218,96 +172,60 @@ const defaultConfig: PiStatusConfig = {
   extensionSegments: { hidden: [] },
 };
 
+function stubCtx(cwd = "/test"): ExtensionContext {
+  return { cwd } as unknown as ExtensionContext;
+}
+
 describe("RuntimeStateMachine", () => {
   it("returns initial snapshot with defaults", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
     const s = sm.snapshot();
+    expect(s.ctx).toBeUndefined();
     expect(s.config).toEqual(defaultConfig);
-    expect(s.cwd).toBe("");
     expect(s.thinkingLevel).toBe("medium");
     expect(s.gitBranch).toBeNull();
-    expect(s.isIdle).toBe(true);
-    expect(s.hasPendingMessages).toBe(false);
-    expect(s.branch).toEqual([]);
-    expect(s.sessionId).toBeUndefined();
-    expect(s.model).toBeUndefined();
-    expect(s.usageState).toBeUndefined();
     expect(s.extensionStatuses).toEqual(new Map());
   });
 
-  it("updates on session_start", () => {
+  it("stores ctx on session_start", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
-    sm.update({
-      type: "session_start",
-      cwd: "/project",
-      model: { id: "gpt-5", name: "GPT-5", reasoning: true },
-      sessionId: "abc123",
-      branch: [{ type: "message" }],
-      isIdle: false,
-      hasPendingMessages: true,
-      contextUsage: { tokens: 1000, contextWindow: 200000, percent: 0.5 },
-    });
+    const ctx = stubCtx("/project");
+    sm.update({ type: "session_start", ctx });
+    expect(sm.snapshot().ctx).toBe(ctx);
+  });
+
+  it("stores ctx on session_tree", () => {
+    const sm = createRuntimeStateMachine(defaultConfig);
+    const ctx = stubCtx("/other");
+    sm.update({ type: "session_tree", ctx });
+    expect(sm.snapshot().ctx).toBe(ctx);
+  });
+
+  it("stores ctx on model_select", () => {
+    const sm = createRuntimeStateMachine(defaultConfig);
+    const ctx = stubCtx();
+    sm.update({ type: "model_select", ctx });
+    expect(sm.snapshot().ctx).toBe(ctx);
+  });
+
+  it("stores ctx and level on thinking_level_changed", () => {
+    const sm = createRuntimeStateMachine(defaultConfig);
+    const ctx = stubCtx();
+    sm.update({ type: "thinking_level_changed", ctx, level: "high" });
     const s = sm.snapshot();
-    expect(s.cwd).toBe("/project");
-    expect(s.model?.name).toBe("GPT-5");
-    expect(s.sessionId).toBe("abc123");
-    expect(s.isIdle).toBe(false);
-    expect(s.hasPendingMessages).toBe(true);
-    expect(s.contextUsage?.tokens).toBe(1000);
+    expect(s.ctx).toBe(ctx);
+    expect(s.thinkingLevel).toBe("high");
   });
 
-  it("updates on session_tree (same shape as session_start)", () => {
+  it("clears ctx on session_shutdown but preserves config and thinkingLevel", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
-    sm.update({
-      type: "session_tree",
-      cwd: "/other",
-      model: { id: "x" },
-      sessionId: "xyz",
-      branch: [],
-      isIdle: true,
-      hasPendingMessages: false,
-      contextUsage: undefined,
-    });
-    expect(sm.snapshot().cwd).toBe("/other");
-    expect(sm.snapshot().sessionId).toBe("xyz");
-  });
-
-  it("updates model on model_selected", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
-    sm.update({ type: "model_selected", model: { id: "x", name: "X" } });
-    expect(sm.snapshot().model).toEqual({ id: "x", name: "X" });
-  });
-
-  it("updates thinking level", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
-    sm.update({ type: "thinking_level_changed", level: "high" });
-    expect(sm.snapshot().thinkingLevel).toBe("high");
-  });
-
-  it("updates usage state", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
-    const usageState = {
-      compatibility: {
-        currentLiveProviderSnapshot: {
-          providerId: "anthropic",
-          windows: [{ key: "fiveHour", usedPercent: 40 }],
-        },
-      },
-    };
-    sm.update({ type: "usage_update", state: usageState });
-    expect(sm.snapshot().usageState).toBe(usageState);
-  });
-
-  it("updates branch change", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
-    const statuses = new Map([["ext-a", "running"]]);
-    sm.update({
-      type: "branch_change",
-      gitBranch: "feature/x",
-      extensionStatuses: statuses,
-    });
-    expect(sm.snapshot().gitBranch).toBe("feature/x");
-    expect(sm.snapshot().extensionStatuses).toBe(statuses);
+    sm.update({ type: "session_start", ctx: stubCtx() });
+    sm.update({ type: "thinking_level_changed", ctx: stubCtx(), level: "high" });
+    sm.update({ type: "session_shutdown" });
+    const s = sm.snapshot();
+    expect(s.ctx).toBeUndefined();
+    expect(s.config).toEqual(defaultConfig);
+    expect(s.thinkingLevel).toBe("high");
   });
 
   it("updates config on config_reload", () => {
@@ -320,36 +238,26 @@ describe("RuntimeStateMachine", () => {
     expect(sm.snapshot().config).toEqual(newConfig);
   });
 
-  it("resets on shutdown", () => {
+  it("updates gitBranch and extensionStatuses on branch_change", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
+    const statuses = new Map([["ext-a", "running"]]);
     sm.update({
-      type: "session_start",
-      cwd: "/project",
-      model: { id: "x" },
-      sessionId: "abc",
-      branch: [{}],
-      isIdle: false,
-      hasPendingMessages: true,
-      contextUsage: { tokens: 100, contextWindow: 200000, percent: 0.05 },
+      type: "branch_change",
+      gitBranch: "feature/x",
+      extensionStatuses: statuses,
     });
-    sm.update({ type: "shutdown" });
     const s = sm.snapshot();
-    expect(s.model).toBeUndefined();
-    expect(s.cwd).toBe("");
-    expect(s.sessionId).toBeUndefined();
-    expect(s.branch).toEqual([]);
-    expect(s.extensionStatuses).toEqual(new Map());
-    // config persists through shutdown
-    expect(s.config).toEqual(defaultConfig);
+    expect(s.gitBranch).toBe("feature/x");
+    expect(s.extensionStatuses).toBe(statuses);
   });
 
   it("fires onInvalidate on every update", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
     const cb = vi.fn();
     sm.onInvalidate(cb);
-    sm.update({ type: "thinking_level_changed", level: "low" });
+    sm.update({ type: "thinking_level_changed", ctx: stubCtx(), level: "low" });
     expect(cb).toHaveBeenCalledOnce();
-    sm.update({ type: "thinking_level_changed", level: "high" });
+    sm.update({ type: "config_reload", config: defaultConfig });
     expect(cb).toHaveBeenCalledTimes(2);
   });
 
@@ -358,7 +266,7 @@ describe("RuntimeStateMachine", () => {
     const cb = vi.fn();
     sm.onInvalidate(cb);
     sm.onInvalidate(undefined);
-    sm.update({ type: "thinking_level_changed", level: "low" });
+    sm.update({ type: "config_reload", config: defaultConfig });
     expect(cb).not.toHaveBeenCalled();
   });
 
@@ -367,7 +275,7 @@ describe("RuntimeStateMachine", () => {
     const cb = vi.fn();
     sm.onInvalidate(cb);
     sm.dispose();
-    sm.update({ type: "thinking_level_changed", level: "low" });
+    sm.update({ type: "config_reload", config: defaultConfig });
     expect(cb).not.toHaveBeenCalled();
   });
 });
@@ -378,7 +286,7 @@ describe("RuntimeStateMachine", () => {
 ```bash
 pnpm test tests/core/runtime-state.test.ts
 ```
-Expected: all pass.
+Expected: all 10 tests pass.
 
 - [ ] **Step 3: Commit**
 
@@ -398,229 +306,271 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 **Files:**
 - Modify: `src/index.ts`
 
-- [ ] **Step 1: Replace RuntimeState with state machine import**
+**Context:** The current `src/index.ts` (235 lines) has a `RuntimeState` type (lines 31-37), a `createRuntimeState()` factory (lines 39-47), a `refresh()` helper (lines 137-141), and a `refreshRuntimeConfig()` helper (lines 70-72). All of these will be replaced by `createRuntimeStateMachine` calls.
 
-At the top of `src/index.ts`, replace:
+The render path currently uses `buildSnapshot()` → `resolveFooter()` → `buildFooterLineFromResolved()` (the Phase 12 pipeline). This is preserved — only the source of `config`, `thinkingLevel`, `gitBranch`, and `extensionStatuses` changes from `state.*` to `runtimeState.snapshot()`.
+
+- [ ] **Step 1: Replace the entire `src/index.ts` with refactored version**
+
+Replace the full contents of `src/index.ts` with:
+
 ```ts
-import { buildSnapshot } from "./core/resolve-footer.ts";
-```
-With:
-```ts
-import { buildSnapshot } from "./core/resolve-footer.ts";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { loadConfig, saveConfigToSettings } from "./core/config.ts";
+import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
-```
+import { createUsageRuntime } from "./core/usage-runtime.ts";
+import type { PiStatusConfig } from "./shared/types.ts";
+import { createStatusLineEditor } from "./tui/editor.ts";
+import { buildFooterLineFromResolved } from "./tui/render.ts";
+import { fromPiTheme, noTheme, type StatusLineTheme } from "./tui/theme.ts";
 
-Remove the `RuntimeState` type and `createRuntimeState()` function (lines 31–47 in current file).
-
-- [ ] **Step 2: Replace state initialization in createExtension**
-
-Replace:
-```ts
-const state = createRuntimeState();
-```
-With:
-```ts
-const runtimeState = createRuntimeStateMachine(loadConfig().config);
-```
-
-- [ ] **Step 3: Update refreshRuntimeConfig**
-
-Replace:
-```ts
-function refreshRuntimeConfig(cwd?: string): void {
-  state.config = loadConfig(cwd ? { cwd } : undefined).config;
-}
-```
-With:
-```ts
-function refreshRuntimeConfig(cwd?: string): void {
-  runtimeState.update({
-    type: "config_reload",
-    config: loadConfig(cwd ? { cwd } : undefined).config,
-  });
-}
-```
-
-- [ ] **Step 4: Update event handlers to use state machine**
-
-Replace event handlers to use `runtimeState.update(...)`:
-
-```ts
-pi.on("session_start", (_event, ctx) => {
-  usageRuntime.requestCurrent();
-  runtimeState.update({
-    type: "session_start",
-    cwd: ctx.cwd,
-    model: ctx.model,
-    sessionId: ctx.sessionManager.getSessionId(),
-    branch: ctx.sessionManager.getBranch() as unknown[],
-    isIdle: ctx.isIdle(),
-    hasPendingMessages: ctx.hasPendingMessages(),
-    contextUsage: ctx.getContextUsage(),
-  });
-  refreshRuntimeConfig(ctx.cwd);
-  installFooter(ctx);
-});
-
-pi.on("session_tree", (_event, ctx) => {
-  runtimeState.update({
-    type: "session_tree",
-    cwd: ctx.cwd,
-    model: ctx.model,
-    sessionId: ctx.sessionManager.getSessionId(),
-    branch: ctx.sessionManager.getBranch() as unknown[],
-    isIdle: ctx.isIdle(),
-    hasPendingMessages: ctx.hasPendingMessages(),
-    contextUsage: ctx.getContextUsage(),
-  });
-  refreshRuntimeConfig(ctx.cwd);
-  installFooter(ctx);
-});
-
-pi.on("model_select", (_event, ctx) => {
-  runtimeState.update({ type: "model_selected", model: ctx.model });
-  runtimeState.update({
-    type: "session_tree",
-    cwd: ctx.cwd,
-    model: ctx.model,
-    sessionId: ctx.sessionManager.getSessionId(),
-    branch: ctx.sessionManager.getBranch() as unknown[],
-    isIdle: ctx.isIdle(),
-    hasPendingMessages: ctx.hasPendingMessages(),
-    contextUsage: ctx.getContextUsage(),
-  });
-});
-
-pi.on("thinking_level_select", (_event, ctx) => {
-  runtimeState.update({
-    type: "thinking_level_changed",
-    level: String(pi.getThinkingLevel()),
-  });
-  runtimeState.update({
-    type: "session_tree",
-    cwd: ctx.cwd,
-    model: ctx.model,
-    sessionId: ctx.sessionManager.getSessionId(),
-    branch: ctx.sessionManager.getBranch() as unknown[],
-    isIdle: ctx.isIdle(),
-    hasPendingMessages: ctx.hasPendingMessages(),
-    contextUsage: ctx.getContextUsage(),
-  });
-});
-
-pi.on("session_shutdown", (_event, ctx) => {
-  runtimeState.update({ type: "shutdown" });
-  usageRuntime.setOnChange(undefined);
-  if (ctx.hasUI) ctx.ui.setFooter(undefined);
-});
-```
-
-- [ ] **Step 5: Update the render path in installFooter**
-
-In the `render(width)` function, replace `state.*` references with `runtimeState.snapshot()`:
-
-```ts
-render(width: number) {
-  const snap = runtimeState.snapshot();
-  const footerGitBranch = footerData.getGitBranch();
-  const footerStatuses = new Map(footerData.getExtensionStatuses().entries());
-
-  // Update branch data in state machine
-  runtimeState.update({
-    type: "branch_change",
-    gitBranch: footerGitBranch,
-    extensionStatuses: footerStatuses,
-  });
-
-  const activeCtx = ctx;
-  const snapshot = buildSnapshot({
-    model: snap.model ?? activeCtx.model,
-    cwd: snap.cwd || activeCtx.cwd,
-    thinkingLevel: snap.thinkingLevel,
-    gitBranch: footerGitBranch,
-    isIdle: activeCtx.isIdle(),
-    hasPendingMessages: activeCtx.hasPendingMessages(),
-    contextUsage: activeCtx.getContextUsage(),
-    branch: activeCtx.sessionManager.getBranch() as unknown[],
-    sessionId: activeCtx.sessionManager.getSessionId(),
-    usageState: usageRuntime.getState(),
-    extensionStatuses: footerStatuses,
-  });
-  const line = buildFooterLine(
-    {
-      ...snapshot,
-      extensionSegments: snap.config.extensionSegments,
-      segments: snap.config.segments,
-    },
-    fromPiTheme(theme),
-    width,
-  );
-  return [line];
-},
-```
-
-- [ ] **Step 6: Update requestRender wiring**
-
-Replace `state.requestRender` references:
-
-In the footer factory:
-```ts
-const factory: FooterFactory = (tui, theme, footerData) => {
-  const requestRender = () => tui.requestRender?.();
-  runtimeState.onInvalidate(requestRender);
-  usageRuntime.setOnChange(requestRender);
-  const unsubscribe = footerData.onBranchChange?.(() => requestRender());
-
-  return {
-    dispose() {
-      unsubscribe?.();
-      runtimeState.onInvalidate(undefined);
-      usageRuntime.setOnChange(undefined);
-    },
-    invalidate() {
-      requestRender();
-    },
-    render(width: number) { /* ... as above ... */ },
-  };
+type FooterComponent = {
+  render: (width: number) => string[];
+  invalidate: () => void;
+  dispose?: () => void;
 };
+
+type FooterDataLike = {
+  getGitBranch: () => string | null;
+  getExtensionStatuses: () => ReadonlyMap<string, string>;
+  onBranchChange?: (listener: () => void) => (() => void) | undefined;
+};
+
+type FooterFactory = (
+  tui: { requestRender?: () => void },
+  theme: { fg: (color: string, text: string) => string },
+  footerData: FooterDataLike,
+) => FooterComponent;
+
+const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
+  render(): string[] {
+    return [];
+  },
+  invalidate(): void {},
+  dispose(): void {},
+});
+
+function isLiveTheme(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { fg?: unknown; bold?: unknown };
+  return (
+    typeof candidate.fg === "function" && typeof candidate.bold === "function"
+  );
+}
+
+export default function createExtension(pi: ExtensionAPI): void {
+  const runtimeState = createRuntimeStateMachine(loadConfig().config);
+
+  const usageRuntime = createUsageRuntime(pi);
+
+  function installFooter(ctx: ExtensionContext): void {
+    if (!ctx.hasUI) return;
+
+    const factory: FooterFactory = (tui, theme, footerData) => {
+      const requestRender = () => tui.requestRender?.();
+      runtimeState.onInvalidate(requestRender);
+      usageRuntime.setOnChange(requestRender);
+      const unsubscribe = footerData.onBranchChange?.(() => {
+        runtimeState.update({
+          type: "branch_change",
+          gitBranch: footerData.getGitBranch(),
+          extensionStatuses: new Map(
+            footerData.getExtensionStatuses().entries(),
+          ),
+        });
+      });
+
+      return {
+        dispose() {
+          unsubscribe?.();
+          runtimeState.onInvalidate(undefined);
+          usageRuntime.setOnChange(undefined);
+        },
+        invalidate() {
+          requestRender();
+        },
+        render(width: number) {
+          const snap = runtimeState.snapshot();
+          const activeCtx = snap.ctx ?? ctx;
+          const statusTheme = fromPiTheme(theme);
+          const snapshot = buildSnapshot({
+            model: activeCtx.model,
+            cwd: activeCtx.cwd,
+            thinkingLevel: snap.thinkingLevel,
+            gitBranch: snap.gitBranch,
+            isIdle: activeCtx.isIdle(),
+            hasPendingMessages: activeCtx.hasPendingMessages(),
+            contextUsage: activeCtx.getContextUsage(),
+            branch: activeCtx.sessionManager.getBranch() as unknown[],
+            sessionId: activeCtx.sessionManager.getSessionId(),
+            usageState: usageRuntime.getState(),
+            extensionStatuses: snap.extensionStatuses,
+          });
+          const { segments, extensionStatusText } = resolveFooter(
+            snapshot,
+            snap.config,
+            statusTheme,
+          );
+          const line = buildFooterLineFromResolved(
+            segments,
+            extensionStatusText,
+            statusTheme,
+            width,
+          );
+          return [line];
+        },
+      };
+    };
+
+    ctx.ui.setFooter(factory as never);
+  }
+
+  function installEmptyFooter(ctx: ExtensionContext): void {
+    if (ctx.hasUI) ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
+  }
+
+  pi.registerCommand("statusline", {
+    description: "Configure statusline segments and extension-status visibility",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("/statusline requires interactive UI", "warning");
+        return;
+      }
+
+      const snap = runtimeState.snapshot();
+      const discovered = [...snap.extensionStatuses.keys()].sort((a, b) =>
+        a.localeCompare(b),
+      );
+
+      let result: PiStatusConfig | null = null;
+      try {
+        installEmptyFooter(ctx);
+        result = await ctx.ui.custom<PiStatusConfig | null>(
+          (tui, theme, _keys, done) => {
+            const editorSnap = runtimeState.snapshot();
+            const activeCtx = editorSnap.ctx ?? ctx;
+            const menuTheme: StatusLineTheme = isLiveTheme(theme)
+              ? fromPiTheme(theme)
+              : noTheme;
+            const snapshot = buildSnapshot({
+              model: activeCtx.model,
+              cwd: activeCtx.cwd,
+              thinkingLevel: editorSnap.thinkingLevel,
+              gitBranch: editorSnap.gitBranch,
+              isIdle: activeCtx.isIdle(),
+              hasPendingMessages: activeCtx.hasPendingMessages(),
+              contextUsage: activeCtx.getContextUsage(),
+              branch: activeCtx.sessionManager.getBranch() as unknown[],
+              sessionId: activeCtx.sessionManager.getSessionId(),
+              usageState: usageRuntime.getState(),
+              extensionStatuses: editorSnap.extensionStatuses,
+            });
+            return createStatusLineEditor({
+              config: editorSnap.config,
+              discoveredStatuses: discovered,
+              previewInput: snapshot,
+              theme: menuTheme,
+              done,
+              requestRender: () => tui.requestRender?.(),
+              usageAvailable: usageRuntime.getAvailable(),
+            });
+          },
+        );
+      } finally {
+        installFooter(ctx);
+      }
+
+      if (!result) return;
+
+      try {
+        saveConfigToSettings(result, { cwd: ctx.cwd });
+        runtimeState.update({ type: "config_reload", config: result });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to save statusline settings";
+        ctx.ui.notify(message, "warning");
+      }
+    },
+  });
+
+  pi.on("session_start", (_event, ctx) => {
+    usageRuntime.requestCurrent();
+    runtimeState.update({ type: "session_start", ctx });
+    runtimeState.update({
+      type: "config_reload",
+      config: loadConfig({ cwd: ctx.cwd }).config,
+    });
+    installFooter(ctx);
+  });
+
+  pi.on("session_tree", (_event, ctx) => {
+    runtimeState.update({ type: "session_tree", ctx });
+    runtimeState.update({
+      type: "config_reload",
+      config: loadConfig({ cwd: ctx.cwd }).config,
+    });
+    installFooter(ctx);
+  });
+
+  pi.on("model_select", (_event, ctx) => {
+    runtimeState.update({ type: "model_select", ctx });
+  });
+
+  pi.on("thinking_level_select", (_event, ctx) => {
+    runtimeState.update({
+      type: "thinking_level_changed",
+      ctx,
+      level: String(pi.getThinkingLevel()),
+    });
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    runtimeState.update({ type: "session_shutdown" });
+    usageRuntime.setOnChange(undefined);
+    if (ctx.hasUI) ctx.ui.setFooter(undefined);
+  });
+}
 ```
 
-- [ ] **Step 7: Update the /statusline command handler**
+**What changed from the original `src/index.ts`:**
+- **Removed:** `RuntimeState` type (was lines 31-37), `createRuntimeState()` (was lines 39-47), `refreshRuntimeConfig()` (was lines 70-72), `refresh()` (was lines 137-141)
+- **Added:** `import { createRuntimeStateMachine }` from `./core/runtime-state.ts`
+- **Replaced:** `const state = createRuntimeState()` → `const runtimeState = createRuntimeStateMachine(loadConfig().config)`
+- **Event handlers:** Each handler now dispatches typed events via `runtimeState.update(...)` instead of mutating `state.*` fields directly
+- **Footer factory:** `state.requestRender` wiring replaced by `runtimeState.onInvalidate(requestRender)`. `onBranchChange` callback dispatches `branch_change` events instead of storing values on `state`.
+- **Render path:** Reads `thinkingLevel`, `gitBranch`, `extensionStatuses`, `config` from `runtimeState.snapshot()`. Reads `model`, `cwd`, `isIdle()`, `hasPendingMessages()`, `contextUsage`, `branch`, `sessionId` live from `snap.ctx`.
+- **/statusline handler:** Reads from `runtimeState.snapshot()` instead of `state.*`. On save, dispatches `config_reload` event instead of setting `state.config` directly.
 
-Replace `state.config` and `state.extensionStatuses` with `runtimeState.snapshot()`:
+- [ ] **Step 2: Run typecheck**
 
-```ts
-const snap = runtimeState.snapshot();
-const discovered = [...snap.extensionStatuses.keys()].sort((a, b) =>
-  a.localeCompare(b),
-);
+```bash
+pnpm typecheck
 ```
+Expected: PASS.
 
-And when saving:
-```ts
-if (!result) return;
-try {
-  saveConfigToSettings(result, { cwd: ctx.cwd });
-  runtimeState.update({ type: "config_reload", config: result });
-} catch (error) { /* ... */ }
-```
-
-- [ ] **Step 8: Remove dead state references**
-
-Remove any remaining references to the old `state` variable. The `state.ctx` pattern can be replaced by keeping a local `let activeCtx: ExtensionContext | undefined` in the closure — or just using the `ctx` from event handlers directly.
-
-- [ ] **Step 9: Run full verification**
+- [ ] **Step 3: Run full verification**
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
-Expected: all pass. Integration tests in `tests/index.test.ts` verify behavior through the extension API.
+Expected: all pass. The integration tests in `tests/index.test.ts` exercise the full event→render pipeline and should pass unchanged — the same values reach the render path, just sourced from the state machine snapshot instead of the old `state` object.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add -A
 git commit -m "refactor: wire RuntimeStateMachine into index.ts
+
+Replace RuntimeState/createRuntimeState with createRuntimeStateMachine.
+Event handlers dispatch typed events. Footer factory wires onInvalidate
+for re-render. Render reads config/thinkingLevel/gitBranch from snapshot,
+volatile queries (isIdle, model, etc.) live from ctx.
 
 Generated with [Devin](https://devin.ai)
 
