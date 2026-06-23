@@ -13,14 +13,13 @@ function stubCtx(cwd = "/test"): ExtensionContext {
 }
 
 describe("RuntimeStateMachine", () => {
-  it("returns initial snapshot with defaults", () => {
+  it("returns initial snapshot with only durable state fields", () => {
     const sm = createRuntimeStateMachine(defaultConfig);
     const s = sm.snapshot();
     expect(s.ctx).toBeUndefined();
     expect(s.config).toEqual(defaultConfig);
     expect(s.thinkingLevel).toBe("medium");
-    expect(s.gitBranch).toBeNull();
-    expect(s.extensionStatuses).toEqual(new Map());
+    expect(Object.keys(s).sort()).toEqual(["config", "ctx", "thinkingLevel"]);
   });
 
   it("stores ctx on session_start", () => {
@@ -72,20 +71,6 @@ describe("RuntimeStateMachine", () => {
     };
     sm.update({ type: "config_reload", config: newConfig });
     expect(sm.snapshot().config).toEqual(newConfig);
-  });
-
-  it("updates gitBranch and extensionStatuses on branch_change", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
-    const statuses = new Map([["ext-a", "running"]]);
-    sm.update({
-      type: "branch_change",
-      gitBranch: "feature/x",
-      extensionStatuses: statuses,
-    });
-    const s = sm.snapshot();
-    expect(s.gitBranch).toBe("feature/x");
-    // Identity check: snapshot stores the reference as-is, not a copy.
-    expect(s.extensionStatuses).toBe(statuses);
   });
 
   it("fires onInvalidate on every update", () => {
