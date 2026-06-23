@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfigToSettings } from "./core/config.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
+import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
@@ -28,24 +29,6 @@ type FooterFactory = (
   footerData: FooterDataLike,
 ) => FooterComponent;
 
-type RuntimeState = {
-  config: PiStatusConfig;
-  ctx: ExtensionContext | undefined;
-  requestRender: (() => void) | undefined;
-  gitBranch: string | null;
-  extensionStatuses: Map<string, string>;
-};
-
-function createRuntimeState(): RuntimeState {
-  return {
-    config: loadConfig().config,
-    ctx: undefined,
-    requestRender: undefined,
-    gitBranch: null,
-    extensionStatuses: new Map(),
-  };
-}
-
 const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
   render(): string[] {
     return [];
@@ -63,57 +46,56 @@ function isLiveTheme(value: unknown): boolean {
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
-  const state = createRuntimeState();
+  const runtimeState = createRuntimeStateMachine(loadConfig().config);
 
   const usageRuntime = createUsageRuntime(pi);
-
-  function refreshRuntimeConfig(cwd?: string): void {
-    state.config = loadConfig(cwd ? { cwd } : undefined).config;
-  }
 
   function installFooter(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
 
     const factory: FooterFactory = (tui, theme, footerData) => {
-      state.requestRender = () => tui.requestRender?.();
-      usageRuntime.setOnChange(state.requestRender);
-      const unsubscribe = footerData.onBranchChange?.(() =>
-        tui.requestRender?.(),
-      );
+      const requestRender = () => tui.requestRender?.();
+      runtimeState.onInvalidate(requestRender);
+      usageRuntime.setOnChange(requestRender);
+      const unsubscribe = footerData.onBranchChange?.(() => {
+        runtimeState.update({
+          type: "branch_change",
+          gitBranch: footerData.getGitBranch(),
+          extensionStatuses: new Map(
+            footerData.getExtensionStatuses().entries(),
+          ),
+        });
+      });
 
       return {
         dispose() {
           unsubscribe?.();
-          if (state.requestRender === tui.requestRender)
-            state.requestRender = undefined;
-          usageRuntime.setOnChange(state.requestRender);
+          runtimeState.onInvalidate(undefined);
+          usageRuntime.setOnChange(undefined);
         },
         invalidate() {
-          state.requestRender?.();
+          requestRender();
         },
         render(width: number) {
-          const activeCtx = state.ctx ?? ctx;
-          state.gitBranch = footerData.getGitBranch();
-          state.extensionStatuses = new Map(
-            footerData.getExtensionStatuses().entries(),
-          );
+          const snap = runtimeState.snapshot();
+          const activeCtx = snap.ctx ?? ctx;
+          const statusTheme = fromPiTheme(theme);
           const snapshot = buildSnapshot({
             model: activeCtx.model,
             cwd: activeCtx.cwd,
-            thinkingLevel: String(pi.getThinkingLevel()),
-            gitBranch: state.gitBranch,
+            thinkingLevel: snap.thinkingLevel,
+            gitBranch: snap.gitBranch,
             isIdle: activeCtx.isIdle(),
             hasPendingMessages: activeCtx.hasPendingMessages(),
             contextUsage: activeCtx.getContextUsage(),
             branch: activeCtx.sessionManager.getBranch() as unknown[],
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
-            extensionStatuses: state.extensionStatuses,
+            extensionStatuses: snap.extensionStatuses,
           });
-          const statusTheme = fromPiTheme(theme);
           const { segments, extensionStatusText } = resolveFooter(
             snapshot,
-            state.config,
+            snap.config,
             statusTheme,
           );
           const line = buildFooterLineFromResolved(
@@ -134,12 +116,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     if (ctx.hasUI) ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
   }
 
-  function refresh(ctx: ExtensionContext): void {
-    state.ctx = ctx;
-    refreshRuntimeConfig(ctx.cwd);
-    state.requestRender?.();
-  }
-
   pi.registerCommand("statusline", {
     description: "Configure statusline segments and extension-status visibility",
     handler: async (_args, ctx) => {
@@ -148,7 +124,8 @@ export default function createExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const discovered = [...state.extensionStatuses.keys()].sort((a, b) =>
+      const snap = runtimeState.snapshot();
+      const discovered = [...snap.extensionStatuses.keys()].sort((a, b) =>
         a.localeCompare(b),
       );
 
@@ -157,25 +134,26 @@ export default function createExtension(pi: ExtensionAPI): void {
         installEmptyFooter(ctx);
         result = await ctx.ui.custom<PiStatusConfig | null>(
           (tui, theme, _keys, done) => {
-            const activeCtx = state.ctx ?? ctx;
+            const editorSnap = runtimeState.snapshot();
+            const activeCtx = editorSnap.ctx ?? ctx;
             const menuTheme: StatusLineTheme = isLiveTheme(theme)
               ? fromPiTheme(theme)
               : noTheme;
             const snapshot = buildSnapshot({
               model: activeCtx.model,
               cwd: activeCtx.cwd,
-              thinkingLevel: String(pi.getThinkingLevel()),
-              gitBranch: state.gitBranch,
+              thinkingLevel: editorSnap.thinkingLevel,
+              gitBranch: editorSnap.gitBranch,
               isIdle: activeCtx.isIdle(),
               hasPendingMessages: activeCtx.hasPendingMessages(),
               contextUsage: activeCtx.getContextUsage(),
               branch: activeCtx.sessionManager.getBranch() as unknown[],
               sessionId: activeCtx.sessionManager.getSessionId(),
               usageState: usageRuntime.getState(),
-              extensionStatuses: state.extensionStatuses,
+              extensionStatuses: editorSnap.extensionStatuses,
             });
             return createStatusLineEditor({
-              config: state.config,
+              config: editorSnap.config,
               discoveredStatuses: discovered,
               previewInput: snapshot,
               theme: menuTheme,
@@ -193,8 +171,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 
       try {
         saveConfigToSettings(result, { cwd: ctx.cwd });
-        state.config = result;
-        state.requestRender?.();
+        runtimeState.update({ type: "config_reload", config: result });
       } catch (error) {
         const message =
           error instanceof Error
@@ -207,28 +184,37 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     usageRuntime.requestCurrent();
-    refreshRuntimeConfig(ctx.cwd);
-    state.ctx = ctx;
+    runtimeState.update({ type: "session_start", ctx });
+    runtimeState.update({
+      type: "config_reload",
+      config: loadConfig({ cwd: ctx.cwd }).config,
+    });
     installFooter(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
-    refreshRuntimeConfig(ctx.cwd);
-    state.ctx = ctx;
+    runtimeState.update({ type: "session_tree", ctx });
+    runtimeState.update({
+      type: "config_reload",
+      config: loadConfig({ cwd: ctx.cwd }).config,
+    });
     installFooter(ctx);
   });
 
   pi.on("model_select", (_event, ctx) => {
-    refresh(ctx);
+    runtimeState.update({ type: "model_select", ctx });
   });
 
   pi.on("thinking_level_select", (_event, ctx) => {
-    refresh(ctx);
+    runtimeState.update({
+      type: "thinking_level_changed",
+      ctx,
+      level: String(pi.getThinkingLevel()),
+    });
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
-    state.ctx = undefined;
-    state.requestRender = undefined;
+    runtimeState.update({ type: "session_shutdown" });
     usageRuntime.setOnChange(undefined);
     if (ctx.hasUI) ctx.ui.setFooter(undefined);
   });
