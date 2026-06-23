@@ -280,7 +280,7 @@ export function editorReducer(
       const list = getFilteredRows(state);
       const idx = clampIndex(state, state.selectedIndex);
       const current = list[idx];
-      if (!current || current.type !== "segment") return { type: "next", state };
+      if (current?.type !== "segment") return { type: "next", state };
 
       const segIdx = state.enabledSegments.indexOf(current.id);
       if (segIdx < 0) return { type: "next", state };
