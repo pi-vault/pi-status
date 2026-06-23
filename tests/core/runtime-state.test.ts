@@ -84,6 +84,7 @@ describe("RuntimeStateMachine", () => {
     });
     const s = sm.snapshot();
     expect(s.gitBranch).toBe("feature/x");
+    // Identity check: snapshot stores the reference as-is, not a copy.
     expect(s.extensionStatuses).toBe(statuses);
   });
 

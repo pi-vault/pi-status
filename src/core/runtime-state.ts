@@ -68,6 +68,8 @@ export function createRuntimeStateMachine(
       }
       invalidate();
     },
+    // Returns references to config and extensionStatuses, not copies.
+    // Callers must not mutate the returned values.
     snapshot(): RuntimeSnapshot {
       return { ctx, config, thinkingLevel, gitBranch, extensionStatuses };
     },
