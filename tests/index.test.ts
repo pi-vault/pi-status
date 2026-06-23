@@ -63,6 +63,267 @@ describe("extension wiring", () => {
     expect(requestRender).toHaveBeenCalled();
   });
 
+  it("shows extension statuses on initial render without waiting for onBranchChange", () => {
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => void>
+    >();
+    let footerFactory:
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const requestRender = vi.fn();
+    const events = createBus();
+    const registerCommand = vi.fn();
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const footer = footerFactory?.(
+      { requestRender },
+      { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
+      {
+        getGitBranch: () => "main",
+        getExtensionStatuses: () => new Map([["alpha", "alpha: ready"]]),
+        onBranchChange: () => () => {},
+      },
+    );
+
+    expect(footer?.render(200).join("\n")).toContain("ready");
+    expect(requestRender).not.toHaveBeenCalled();
+  });
+
+  it("passes cached extension statuses into /statusline discovery after footer render", async () => {
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => void>
+    >();
+    let footerFactory:
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn(async (..._args: unknown[]) => null);
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: (x: unknown) => (footerFactory = x as never),
+        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const footer = footerFactory?.(
+      { requestRender: () => {} },
+      { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
+      {
+        getGitBranch: () => "main",
+        getExtensionStatuses: () =>
+          new Map([
+            ["beta-status", "beta-status: syncing"],
+            ["alpha-status", "alpha-status: ready"],
+          ]),
+        onBranchChange: () => () => {},
+      },
+    );
+
+    expect(footer?.render(200).join("\n")).toContain("ready");
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    const handler = (
+      commandCall?.[1] as {
+        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
+      }
+    ).handler;
+
+    await handler("", ctx);
+
+    const factory = customMock.mock.calls[0]?.[0] as
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const component = factory?.(
+      { requestRender: () => {} },
+      {
+        fg: (_c: string, t: string) => t,
+        bold: (t: string) => t,
+        dim: (t: string) => t,
+        rainbow: (t: string) => t,
+      },
+      {},
+      () => {},
+    );
+    const lines = component?.render(200).join("\n") ?? "";
+
+    expect(lines).toContain("alpha-status");
+    expect(lines).toContain("beta-status");
+  });
+
+  it("re-renders with updated extension statuses after onBranchChange fires", () => {
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => void>
+    >();
+    let footerFactory:
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const requestRender = vi.fn();
+    const events = createBus();
+    const registerCommand = vi.fn();
+    let branchListener: (() => void) | undefined;
+    let statusEntries: Array<[string, string]> = [["alpha", "alpha: ready"]];
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const footer = footerFactory?.(
+      { requestRender },
+      { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
+      {
+        getGitBranch: () => "main",
+        getExtensionStatuses: () => new Map(statusEntries),
+        onBranchChange: (cb: () => void) => {
+          branchListener = cb;
+          return () => {
+            branchListener = undefined;
+          };
+        },
+      },
+    );
+
+    expect(footer?.render(200).join("\n")).toContain("ready");
+
+    statusEntries = [["alpha", "alpha: done"]];
+    branchListener?.();
+
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(footer?.render(200).join("\n")).toContain("done");
+  });
+
+  it("does not leak cached extension statuses across sessions before the next footer render", async () => {
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => void>
+    >();
+    let footerFactory:
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const events = createBus();
+    const registerCommand = vi.fn();
+    const customMock = vi.fn(async (..._args: unknown[]) => null);
+
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
+
+    createExtension(pi);
+
+    const ctxA = createContext({
+      ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctxA);
+
+    const footer = footerFactory?.(
+      { requestRender: () => {} },
+      { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
+      {
+        getGitBranch: () => "main",
+        getExtensionStatuses: () => new Map([["alpha-status", "alpha-status: ready"]]),
+        onBranchChange: () => () => {},
+      },
+    );
+
+    expect(footer?.render(200).join("\n")).toContain("ready");
+
+    for (const h of handlers.get("session_shutdown") ?? []) h({}, ctxA);
+
+    const ctxB = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: (x: unknown) => (footerFactory = x as never),
+        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctxB);
+
+    const commandCall = registerCommand.mock.calls.find(
+      ([name]) => name === "statusline",
+    );
+    const handler = (
+      commandCall?.[1] as {
+        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
+      }
+    ).handler;
+
+    await handler("", ctxB);
+
+    const factory = customMock.mock.calls[0]?.[0] as
+      | ((...args: unknown[]) => { render: (width: number) => string[] })
+      | undefined;
+    const component = factory?.(
+      { requestRender: () => {} },
+      {
+        fg: (_c: string, t: string) => t,
+        bold: (t: string) => t,
+        dim: (t: string) => t,
+        rainbow: (t: string) => t,
+      },
+      {},
+      () => {},
+    );
+    const lines = component?.render(200).join("\n") ?? "";
+
+    expect(lines).not.toContain("alpha-status");
+  });
+
   it("re-renders the live footer when usage-core updates arrive after startup", () => {
     const handlers = new Map<
       string,

@@ -7,19 +7,12 @@ export type RuntimeEvent =
   | { type: "model_select"; ctx: ExtensionContext }
   | { type: "thinking_level_changed"; ctx: ExtensionContext; level: string }
   | { type: "session_shutdown" }
-  | { type: "config_reload"; config: PiStatusConfig }
-  | {
-      type: "branch_change";
-      gitBranch: string | null;
-      extensionStatuses: Map<string, string>;
-    };
+  | { type: "config_reload"; config: PiStatusConfig };
 
 export interface RuntimeSnapshot {
   ctx: ExtensionContext | undefined;
   config: PiStatusConfig;
   thinkingLevel: string;
-  gitBranch: string | null;
-  extensionStatuses: Map<string, string>;
 }
 
 export interface RuntimeStateMachine {
@@ -35,8 +28,6 @@ export function createRuntimeStateMachine(
   let ctx: ExtensionContext | undefined;
   let config = initialConfig;
   let thinkingLevel = "medium";
-  let gitBranch: string | null = null;
-  let extensionStatuses = new Map<string, string>();
   let listener: (() => void) | undefined;
 
   function invalidate(): void {
@@ -61,17 +52,11 @@ export function createRuntimeStateMachine(
         case "config_reload":
           config = event.config;
           break;
-        case "branch_change":
-          gitBranch = event.gitBranch;
-          extensionStatuses = event.extensionStatuses;
-          break;
       }
       invalidate();
     },
-    // Returns references to config and extensionStatuses, not copies.
-    // Callers must not mutate the returned values.
     snapshot(): RuntimeSnapshot {
-      return { ctx, config, thinkingLevel, gitBranch, extensionStatuses };
+      return { ctx, config, thinkingLevel };
     },
     onInvalidate(cb: (() => void) | undefined): void {
       listener = cb;
