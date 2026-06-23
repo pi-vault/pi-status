@@ -1,4 +1,5 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
+import { segmentFormatters } from "./formatters.ts";
 import {
   abbreviateHomeDir,
   findProjectRootLabel,
@@ -95,38 +96,6 @@ export function formatModelWithReasoning(
   ];
 }
 
-function contextUsedColor(percent: number): "success" | "warning" | "error" {
-  if (percent < 60) return "success";
-  if (percent < 80) return "warning";
-  return "error";
-}
-
-function contextRemainingColor(
-  remainingPercent: number,
-): "success" | "warning" | "error" {
-  if (remainingPercent <= 20) return "error";
-  if (remainingPercent <= 40) return "warning";
-  return "success";
-}
-
-function getRateWindow(
-  input: FooterRenderInput,
-  key: "fiveHour" | "weekly",
-): { usedPercent: number } | null {
-  const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
-  const window = snapshot?.windows.find((item) => item.key === key);
-  if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) {
-    return null;
-  }
-  return { usedPercent: window.usedPercent };
-}
-
-function rateColor(usedPercent: number): "success" | "warning" | "error" {
-  if (usedPercent < 70) return "success";
-  if (usedPercent < 90) return "warning";
-  return "error";
-}
-
 const ANSI_PREFIX = `${String.fromCharCode(27)}[`;
 
 function hasAnsi(value: string): boolean {
@@ -178,88 +147,7 @@ export function formatSegment(
   input: FooterRenderInput,
   theme: ThemeLike,
 ): [text: string, color: FooterRenderColor | null] | null {
-  switch (id) {
-    case "model": {
-      const value = input.model?.name ?? input.model?.id;
-      return value ? [value, "accent"] : null;
-    }
-    case "model-with-reasoning":
-      return formatModelWithReasoning(input.model, input.thinkingLevel, theme);
-    case "current-dir": {
-      const value = abbreviateHomeDir(input.cwd);
-      return value ? [value, "success"] : null;
-    }
-    case "project-name": {
-      const value = findProjectRootLabel(input.cwd);
-      return value ? [value, "success"] : null;
-    }
-    case "git-branch":
-      return input.gitBranch ? [input.gitBranch, "warning"] : null;
-    case "run-state":
-      return [input.runState, input.runState === "idle" ? "dim" : "accent"];
-    case "context-used": {
-      const tokens = input.contextUsage?.tokens;
-      const ctxWindow = input.contextUsage?.contextWindow;
-      const percent = input.contextUsage?.percent;
-      if (tokens == null || ctxWindow === undefined || percent == null) return null;
-      const c = contextUsedColor(percent);
-      const dim = (s: string) => theme.fg("dim", s);
-      return [
-        `${theme.fg(c, formatCompactNumber(tokens))}${dim(" / ")}${dim(formatCompactNumber(ctxWindow))}${dim(" (")}${theme.fg(c, `${Math.round(percent)}%`)}${dim(")")}`,
-        null,
-      ];
-    }
-    case "context-remaining": {
-      const tokens = input.contextUsage?.tokens;
-      const ctxWindow = input.contextUsage?.contextWindow;
-      const percent = input.contextUsage?.percent;
-      if (tokens == null || ctxWindow === undefined || percent == null) return null;
-      const remaining = Math.max(0, ctxWindow - tokens);
-      const remainingPercent = Math.max(0, Math.round(100 - percent));
-      const c = contextRemainingColor(remainingPercent);
-      const dim = (s: string) => theme.fg("dim", s);
-      return [
-        `${theme.fg(c, formatCompactNumber(remaining))}${dim(" / ")}${dim(formatCompactNumber(ctxWindow))}${dim(" (")}${theme.fg(c, `${remainingPercent}%`)}${dim(")")}`,
-        null,
-      ];
-    }
-    case "used-tokens": {
-      const value = input.branchTotals?.totalTokens;
-      return value === undefined ? null : [`${formatCompactNumber(value)} tok`, "dim"];
-    }
-    case "total-input-tokens": {
-      const value = input.branchTotals?.input;
-      return value === undefined ? null : [`↑${formatCompactNumber(value)}`, "dim"];
-    }
-    case "total-output-tokens": {
-      const value = input.branchTotals?.output;
-      return value === undefined ? null : [`↓${formatCompactNumber(value)}`, "dim"];
-    }
-    case "session-id":
-      return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
-    case "five-hour-limit": {
-      const window = getRateWindow(input, "fiveHour");
-      if (!window) return null;
-      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
-      const dim = (s: string) => theme.fg("dim", s);
-      return [
-        `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
-        null,
-      ];
-    }
-    case "weekly-limit": {
-      const window = getRateWindow(input, "weekly");
-      if (!window) return null;
-      const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
-      const dim = (s: string) => theme.fg("dim", s);
-      return [
-        `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
-        null,
-      ];
-    }
-    default:
-      return null;
-  }
+  return segmentFormatters.get(id)?.(input, theme) ?? null;
 }
 
 export function buildFooterLine(
