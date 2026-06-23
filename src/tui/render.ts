@@ -1,12 +1,6 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { segmentFormatters } from "./formatters.ts";
-import {
-  abbreviateHomeDir,
-  findProjectRootLabel,
-  formatCompactNumber,
-  normalizeThinkingLevel,
-  thinkingLevelColor,
-} from "./render-utils.ts";
+import { normalizeThinkingLevel, thinkingLevelColor } from "./render-utils.ts";
 import {
   DEFAULT_SEGMENTS,
   type ExtensionSegments,
