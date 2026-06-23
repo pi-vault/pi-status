@@ -72,6 +72,12 @@ export {
   normalizeThinkingLevel,
 } from "./render-utils.ts";
 
+/**
+ * Public utility API: takes model/thinkingLevel/theme as separate arguments.
+ * Kept here for backward compatibility — tests and consumers import this directly.
+ * The internal formatters.ts counterpart (formatModelWithReasoningSegment) reads
+ * the same fields from FooterRenderInput for use via the registry.
+ */
 export function formatModelWithReasoning(
   model: ModelLike | undefined,
   thinkingLevel: string,
