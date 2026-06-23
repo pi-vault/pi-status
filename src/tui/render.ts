@@ -171,3 +171,17 @@ export function buildFooterLine(
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);
 }
+
+export function buildFooterLineFromResolved(
+  segments: ResolvedSegment[],
+  extensionStatusText: string | null,
+  theme: ThemeLike,
+  width: number,
+): string {
+  const parts = segments.map(({ text, color }) =>
+    color ? theme.fg(color, text) : text,
+  );
+  if (extensionStatusText) parts.push(extensionStatusText);
+  const line = parts.join(theme.fg("dim", " · "));
+  return truncateToWidth(line, width);
+}

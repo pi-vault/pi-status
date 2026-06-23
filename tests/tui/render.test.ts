@@ -2,13 +2,16 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   buildFooterLine,
+  buildFooterLineFromResolved,
   findProjectRootLabel,
   formatCompactNumber,
   formatModelWithReasoning,
   formatSegment,
   type FooterRenderInput,
+  type ResolvedSegment,
   type ThemeLike,
 } from "../../src/tui/render.ts";
 import { withDefaults } from "../helpers.ts";
@@ -1020,5 +1023,53 @@ describe("buildFooterLine — extension statuses", () => {
       200,
     );
     expect(line).toBe("running");
+  });
+});
+
+describe("buildFooterLineFromResolved", () => {
+  it("joins segments with dim separator and applies colors", () => {
+    const segments: ResolvedSegment[] = [
+      { text: "idle", color: "dim" },
+      { text: "main", color: "warning" },
+    ];
+    const line = buildFooterLineFromResolved(segments, null, markerTheme, 200);
+    expect(line).toBe("[dim:idle][dim: · ][warning:main]");
+  });
+
+  it("appends extensionStatusText after segments", () => {
+    const segments: ResolvedSegment[] = [{ text: "idle", color: "dim" }];
+    const line = buildFooterLineFromResolved(
+      segments,
+      "5h: 60%",
+      identityTheme,
+      200,
+    );
+    expect(line).toBe("idle · 5h: 60%");
+  });
+
+  it("omits separator when extensionStatusText is null", () => {
+    const segments: ResolvedSegment[] = [{ text: "idle", color: "dim" }];
+    const line = buildFooterLineFromResolved(segments, null, identityTheme, 200);
+    expect(line).toBe("idle");
+  });
+
+  it("returns empty string for empty segments and no extension text", () => {
+    const line = buildFooterLineFromResolved([], null, identityTheme, 200);
+    expect(line).toBe("");
+  });
+
+  it("truncates to width", () => {
+    const segments: ResolvedSegment[] = [
+      { text: "abcdef", color: null },
+      { text: "ghijkl", color: null },
+    ];
+    const line = buildFooterLineFromResolved(segments, null, identityTheme, 5);
+    expect(visibleWidth(line)).toBeLessThanOrEqual(5);
+  });
+
+  it("renders null-color segments without theme.fg", () => {
+    const segments: ResolvedSegment[] = [{ text: "plain", color: null }];
+    const line = buildFooterLineFromResolved(segments, null, markerTheme, 200);
+    expect(line).toBe("plain");
   });
 });
