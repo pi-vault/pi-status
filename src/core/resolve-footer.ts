@@ -1,4 +1,16 @@
-import type { FooterRenderInput, ModelLike, RunState } from "../tui/render.ts";
+import type {
+  FooterRenderInput,
+  FooterRenderColor,
+  ModelLike,
+  ResolvedSegment,
+  RunState,
+  ThemeLike,
+} from "../tui/render.ts";
+import {
+  formatExtensionStatuses,
+  formatSegment,
+} from "../tui/render.ts";
+import type { PiStatusConfig } from "../shared/types.ts";
 
 export type SnapshotInput = {
   model?: ModelLike;
@@ -72,4 +84,25 @@ export function buildSnapshot(
     usageState: input.usageState,
     extensionStatuses: input.extensionStatuses,
   };
+}
+
+export function resolveFooter(
+  snapshot: Omit<FooterRenderInput, "segments" | "extensionSegments">,
+  config: PiStatusConfig,
+  theme: ThemeLike,
+): { segments: ResolvedSegment[]; extensionStatusText: string | null } {
+  const input: FooterRenderInput = {
+    ...snapshot,
+    segments: config.segments,
+    extensionSegments: config.extensionSegments,
+  };
+
+  const segments = input.segments
+    .map((id) => formatSegment(id, input, theme))
+    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
+    .map(([text, color]) => ({ text, color }));
+
+  const extensionStatusText = formatExtensionStatuses(input, theme);
+
+  return { segments, extensionStatusText };
 }
