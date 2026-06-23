@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSnapshot, type SnapshotInput } from "../../src/core/snapshot.ts";
+import { buildSnapshot, type SnapshotInput } from "../../src/core/resolve-footer.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
   return {

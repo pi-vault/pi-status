@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfigToSettings } from "./core/config.ts";
-import { buildSnapshot } from "./core/snapshot.ts";
+import { buildSnapshot } from "./core/resolve-footer.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
