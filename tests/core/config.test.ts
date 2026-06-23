@@ -7,8 +7,8 @@ import {
   normalizeExtensionSegments,
   normalizeSegments,
   saveConfigToSettings,
-} from "../src/core/config.ts";
-import { DEFAULT_SEGMENTS } from "../src/shared/types.ts";
+} from "../../src/core/config.ts";
+import { DEFAULT_SEGMENTS } from "../../src/shared/types.ts";
 
 describe("config", () => {
   it("normalizes segments and extension segments", () => {

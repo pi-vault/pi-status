@@ -10,8 +10,8 @@ import {
   formatSegment,
   type FooterRenderInput,
   type ThemeLike,
-} from "../src/tui/render.ts";
-import { withDefaults } from "./test-helpers.ts";
+} from "../../src/tui/render.ts";
+import { withDefaults } from "../helpers.ts";
 
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
 const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };

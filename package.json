@@ -33,27 +33,28 @@
     ]
   },
   "engines": {
-    "node": ">=22.19"
+    "node": ">=24.15.0"
   },
   "files": [
     "src",
     "docs/assets",
+    "LICENSE",
     "CHANGELOG.md",
     "README.md"
   ],
   "dependencies": {
-    "@pi-vault/pi-usage": "^0.4.0"
+    "@pi-vault/pi-usage": "^0.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
+    "@earendil-works/pi-coding-agent": "^0.79.8",
+    "@earendil-works/pi-tui": "^0.79.8",
+    "@types/node": "^25.9.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@earendil-works/pi-coding-agent": "^0.79.3",
-    "@earendil-works/pi-tui": "^0.79.3",
-    "@types/node": "^25.9.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
   }
 }
