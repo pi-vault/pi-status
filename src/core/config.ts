@@ -14,6 +14,7 @@ import {
   isKnownSegment,
   type ExtensionSegments,
   type PiStatusConfig,
+  type SettingsStore,
   type StatusLineSegmentId,
 } from "../shared/types.ts";
 
@@ -33,6 +34,33 @@ function cloneDefaultConfig(): PiStatusConfig {
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
   };
 }
+
+class FsSettingsStore implements SettingsStore {
+  exists(path: string): boolean {
+    return existsSync(path);
+  }
+  read(path: string): string | null {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+  }
+  write(path: string, data: string): void {
+    const parent = dirname(path);
+    mkdirSync(parent, { recursive: true });
+    const tempDir = mkdtempSync(join(parent, ".pi-status-"));
+    const tempFile = join(tempDir, "settings.json.tmp");
+    try {
+      writeFileSync(tempFile, data, "utf8");
+      renameSync(tempFile, path);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+}
+
+const defaultStore: SettingsStore = new FsSettingsStore();
 
 export function getSettingsPaths(cwd = process.cwd()): {
   global: string;
@@ -85,9 +113,14 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   };
 }
 
-function readJsonObject(path: string): Record<string, unknown> | null {
+function readJsonObject(
+  path: string,
+  store: SettingsStore,
+): Record<string, unknown> | null {
+  const content = store.read(path);
+  if (content === null) return null;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const parsed: unknown = JSON.parse(content);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
@@ -102,9 +135,12 @@ type SettingsFileState =
   | { exists: true; value: Record<string, unknown> }
   | { exists: true; malformed: true };
 
-function readSettingsFileState(path: string): SettingsFileState {
-  if (!existsSync(path)) return { exists: false, value: {} };
-  const parsed = readJsonObject(path);
+function readSettingsFileState(
+  path: string,
+  store: SettingsStore,
+): SettingsFileState {
+  if (!store.exists(path)) return { exists: false, value: {} };
+  const parsed = readJsonObject(path, store);
   if (parsed) return { exists: true, value: parsed };
   return { exists: true, malformed: true };
 }
@@ -149,11 +185,15 @@ function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
   return merged;
 }
 
-export function loadConfig(options?: { cwd?: string }): ConfigLoadResult {
+export function loadConfig(options?: {
+  cwd?: string;
+  store?: SettingsStore;
+}): ConfigLoadResult {
   const cwd = options?.cwd ?? process.cwd();
+  const store = options?.store ?? defaultStore;
   const settingsPaths = getSettingsPaths(cwd);
-  const globalSettings = readJsonObject(settingsPaths.global);
-  const projectSettings = readJsonObject(settingsPaths.project);
+  const globalSettings = readJsonObject(settingsPaths.global, store);
+  const projectSettings = readJsonObject(settingsPaths.project, store);
   const mergedPiStatus = mergePiStatus(
     globalSettings?.statusLine,
     projectSettings?.statusLine,
@@ -167,12 +207,13 @@ export function loadConfig(options?: { cwd?: string }): ConfigLoadResult {
 
 export function saveConfigToSettings(
   config: PiStatusConfig,
-  options?: { cwd?: string },
+  options?: { cwd?: string; store?: SettingsStore },
 ): { target: "project" | "global"; path: string } {
   const cwd = options?.cwd ?? process.cwd();
+  const store = options?.store ?? defaultStore;
   const paths = getSettingsPaths(cwd);
 
-  const projectState = readSettingsFileState(paths.project);
+  const projectState = readSettingsFileState(paths.project, store);
   if ("malformed" in projectState) {
     throw new Error(
       `Refusing to select settings target because project settings are malformed or not a JSON object: ${paths.project}`,
@@ -185,7 +226,7 @@ export function saveConfigToSettings(
       : "global";
   const path = target === "project" ? paths.project : paths.global;
 
-  const targetState = readSettingsFileState(path);
+  const targetState = readSettingsFileState(path, store);
   if ("malformed" in targetState) {
     throw new Error(`Refusing to write malformed or non-object settings file: ${path}`);
   }
@@ -199,16 +240,7 @@ export function saveConfigToSettings(
     },
   };
 
-  const parent = dirname(path);
-  mkdirSync(parent, { recursive: true });
-  const tempDir = mkdtempSync(join(parent, ".pi-status-"));
-  const tempFile = join(tempDir, "settings.json.tmp");
-  try {
-    writeFileSync(tempFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-    renameSync(tempFile, path);
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+  store.write(path, `${JSON.stringify(next, null, 2)}\n`);
 
   return { target, path };
 }
