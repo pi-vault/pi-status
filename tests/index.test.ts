@@ -620,6 +620,29 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[1])).toBe("");
     expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
+
+  it("session_shutdown clears the footer and session_start reinstalls it", () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+    });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    expect(footerSpy.calls).toHaveLength(1);
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
+
+    for (const h of handlers.get("session_shutdown") ?? []) h({}, ctx);
+    expect(footerSpy.calls).toHaveLength(2);
+    expect(footerSpy.calls[1]).toBeUndefined();
+
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    expect(footerSpy.calls).toHaveLength(3);
+    expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
+  });
 });
 
 describe("/statusline theme adaptation", () => {
