@@ -24,6 +24,11 @@ export type ThemeLike = {
   rainbow: (text: string) => string;
 };
 
+export interface ResolvedSegment {
+  text: string;
+  color: FooterRenderColor | null;
+}
+
 export type ModelLike = {
   id?: string;
   name?: string;
@@ -113,7 +118,7 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
-function formatExtensionStatuses(
+export function formatExtensionStatuses(
   input: FooterRenderInput,
   theme: ThemeLike,
 ): string | null {
@@ -163,6 +168,20 @@ export function buildFooterLine(
   const extStatus = formatExtensionStatuses(input, theme);
   if (extStatus) parts.push(extStatus);
 
+  const line = parts.join(theme.fg("dim", " · "));
+  return truncateToWidth(line, width);
+}
+
+export function buildFooterLineFromResolved(
+  segments: ResolvedSegment[],
+  extensionStatusText: string | null,
+  theme: ThemeLike,
+  width: number,
+): string {
+  const parts = segments.map(({ text, color }) =>
+    color ? theme.fg(color, text) : text,
+  );
+  if (extensionStatusText) parts.push(extensionStatusText);
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);
 }

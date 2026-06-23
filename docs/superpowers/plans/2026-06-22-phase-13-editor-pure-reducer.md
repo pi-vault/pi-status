@@ -24,13 +24,62 @@ src/tui/
 ├── editor.ts            (Shell: ~60 lines — key→action dispatch, calls reducer+render)
 ├── editor-state.ts      (NEW: ~180 lines — EditorState, EditorAction, editorReducer, initEditorState)
 ├── editor-render.ts     (NEW: ~220 lines — renderEditor, row rendering helpers)
-├── render.ts            (unchanged)
+├── render.ts            (buildFooterLine delegates to buildFooterLineFromResolved)
 └── theme.ts             (unchanged)
 
 tests/tui/
 ├── editor.test.ts            (existing 60 tests stay as regression net — unchanged)
 ├── editor-state.test.ts      (NEW: pure state transition tests)
 ├── editor-render.test.ts     (NEW: state → output assertions)
+```
+
+---
+
+### Task 0: Consolidate buildFooterLine → buildFooterLineFromResolved
+
+**Why:** Phase 12 introduced `buildFooterLineFromResolved` as a thin joiner, but `buildFooterLine` still duplicates the same join+truncate logic inline. Consolidating now means `editor-render.ts` (Task 3) inherits a single code path from day one.
+
+**Files:**
+- Modify: `src/tui/render.ts`
+
+- [ ] **Step 1: Make buildFooterLine delegate to buildFooterLineFromResolved**
+
+Replace the body of `buildFooterLine` so it resolves segments, then delegates:
+
+```ts
+export function buildFooterLine(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+  width: number,
+): string {
+  const segments = input.segments
+    .map((id) => formatSegment(id, input, theme))
+    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
+    .map(([text, color]) => ({ text, color }));
+
+  const extensionStatusText = formatExtensionStatuses(input, theme);
+
+  return buildFooterLineFromResolved(segments, extensionStatusText, theme, width);
+}
+```
+
+- [ ] **Step 2: Run verification**
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test
+```
+
+All 255+ existing tests must pass unchanged — this is a pure refactor.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: buildFooterLine delegates to buildFooterLineFromResolved
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
 ```
 
 ---

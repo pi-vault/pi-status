@@ -3,11 +3,11 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfigToSettings } from "./core/config.ts";
-import { buildSnapshot } from "./core/snapshot.ts";
+import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
-import { buildFooterLine } from "./tui/render.ts";
+import { buildFooterLineFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noTheme, type StatusLineTheme } from "./tui/theme.ts";
 
 type FooterComponent = {
@@ -110,13 +110,16 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: state.extensionStatuses,
           });
-          const line = buildFooterLine(
-            {
-              ...snapshot,
-              extensionSegments: state.config.extensionSegments,
-              segments: state.config.segments,
-            },
-            fromPiTheme(theme),
+          const statusTheme = fromPiTheme(theme);
+          const { segments, extensionStatusText } = resolveFooter(
+            snapshot,
+            state.config,
+            statusTheme,
+          );
+          const line = buildFooterLineFromResolved(
+            segments,
+            extensionStatusText,
+            statusTheme,
             width,
           );
           return [line];
