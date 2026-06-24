@@ -2,6 +2,45 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.3.0 - 2026-06-23
+
+### Added
+
+- Added a runtime state machine that centralizes session, config, and thinking-level state transitions.
+- Added a pure `/statusline` reducer/render split and a formatter registry to make the footer and editor pipeline easier to reason about and extend.
+- Added a settings-store seam for config load/save tests.
+
+### Changed
+
+- Extension statuses now auto-append to the footer when visible instead of requiring a dedicated `extension-statuses` segment.
+- `/statusline` now runs on the refactored editor state/render pipeline while preserving live preview, search, reordering, and per-status visibility control.
+- Footer rendering now resolves segment output before final line assembly, simplifying how configured segments and auto-appended extension statuses are composed.
+- Reasoning, context, and usage segments now use richer colorized rendering.
+
+### Removed
+
+- Removed the `context-window-size` segment.
+- Removed the `extension-statuses` segment.
+- Removed legacy extension filter modes in favor of per-key hidden extension status visibility.
+
+### Fixed
+
+- Fixed extension status discovery and initial render behavior so visible statuses appear without waiting for later provider events.
+- Fixed footer provider state leaks across session shutdown and session restart cycles.
+- Fixed footer restoration when entering and leaving `/statusline`, including error paths.
+- Fixed re-render behavior for async usage updates and branch/status changes.
+
+### Compatibility
+
+- Raised the Node.js requirement to `>=24.15.0`.
+- Updated the tested host baseline to `@earendil-works/pi-coding-agent@0.79.10` and `@earendil-works/pi-tui@0.79.10`.
+- Updated `@pi-vault/pi-usage` to `^0.5.0`.
+
+### Internal
+
+- Split footer resolution, editor state, editor rendering, formatter utilities, and config persistence into smaller focused modules.
+- Reorganized tests under `tests/core`, `tests/tui`, and top-level wiring coverage in `tests/index.test.ts`.
+
 ## 0.2.1 - 2026-06-14
 
 ### Changed
