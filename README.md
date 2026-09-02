@@ -45,7 +45,7 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 
 `/statusline` stays available even when both the Statusbar and Sidebar are disabled — you can re-enable either surface from the Settings tab at any time.
 
-Pi 0.84.3 or newer is required.
+Pi 0.84.4 or newer is required.
 
 ## Available Segments
 

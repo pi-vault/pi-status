@@ -2,6 +2,15 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.5.1 - 2026-09-02
+
+### Compatibility
+
+- Updated `@pi-vault/pi-usage` to `^0.7.1` (latest eligible release, released 2026-08-31).
+- Updated the tested host baseline to `@earendil-works/pi-coding-agent@0.84.4` and `@earendil-works/pi-tui@0.84.4`. Node.js 24.15.0+ still required.
+- Updated `@types/node` to `^26.4.0`. `@types/node@26.4.1` was skipped because it was released less than 48 hours before this release.
+- Refreshed `@biomejs/biome` to `^2.5.11`.
+
 ## 0.5.0 - 2026-08-24
 
 ### Added
