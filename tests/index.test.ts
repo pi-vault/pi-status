@@ -650,6 +650,8 @@ describe("extension wiring", () => {
     ).toEqual({
       statusbarEnabled: true,
       sidebarEnabled: true,
+      sidebarMode: "manual",
+      sidebarWidth: 44,
       zones: {
         topLeft: ["model-with-reasoning"],
         topRight: [],

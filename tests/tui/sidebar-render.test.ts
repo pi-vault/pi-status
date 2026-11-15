@@ -56,6 +56,8 @@ function makeInput(overrides: Partial<SidebarRenderFixtureInput> = {}): SidebarR
     config: {
       statusbarEnabled: true,
       sidebarEnabled: true,
+      sidebarMode: "manual",
+      sidebarWidth: 44,
       zones: footer.zones,
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",

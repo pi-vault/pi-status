@@ -16,6 +16,8 @@ function config(): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: {
       topLeft: ["model-with-reasoning"],
       topRight: [],

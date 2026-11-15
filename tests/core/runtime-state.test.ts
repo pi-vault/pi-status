@@ -11,6 +11,8 @@ import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 const defaultConfig: PiStatusConfig = {
   statusbarEnabled: true,
   sidebarEnabled: true,
+  sidebarMode: "manual",
+  sidebarWidth: 44,
   zones: {
     topLeft: ["model-with-reasoning"],
     topRight: [],
@@ -89,6 +91,8 @@ describe("RuntimeStateMachine", () => {
     const newConfig: PiStatusConfig = {
       statusbarEnabled: true,
       sidebarEnabled: true,
+      sidebarMode: "manual",
+      sidebarWidth: 44,
       zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["x"] },
       extensionStatusZone: "bottomRight",

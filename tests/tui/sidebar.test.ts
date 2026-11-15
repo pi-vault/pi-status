@@ -46,6 +46,8 @@ const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
 const FIXED_CONFIG: PiStatusConfig = {
   statusbarEnabled: true,
   sidebarEnabled: true,
+  sidebarMode: "manual",
+  sidebarWidth: 44,
   zones: DEFAULT_ZONES,
   extensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",

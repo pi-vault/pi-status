@@ -7,24 +7,25 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
+  type ConfigStore,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
+  type ExtensionSegments,
   isKnownSegment,
   isSidebarPanelId,
-  SIDEBAR_BUILTIN_ASSIGNMENTS,
-  type ConfigStore,
-  type ExtensionSegments,
   type PiStatusConfig,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   type SidebarPanelId,
   type SidebarPanelLayout,
   type SidebarPanelLayoutEntry,
   type StatusLineSegmentId,
   type StatusLineZones,
 } from "../shared/types.ts";
+import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "../tui/split-pane.ts";
 import { DEFAULT_COLOR_SETTINGS, normalizeColorSettings } from "./colors.ts";
 import {
   isPersistedSidebarSegmentId,
@@ -42,6 +43,8 @@ export {
 export const DEFAULT_CONFIG: PiStatusConfig = {
   statusbarEnabled: true,
   sidebarEnabled: true,
+  sidebarMode: "manual",
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
@@ -55,6 +58,8 @@ function cloneDefaultConfig(): PiStatusConfig {
   return {
     statusbarEnabled: DEFAULT_CONFIG.statusbarEnabled,
     sidebarEnabled: DEFAULT_CONFIG.sidebarEnabled,
+    sidebarMode: DEFAULT_CONFIG.sidebarMode,
+    sidebarWidth: DEFAULT_CONFIG.sidebarWidth,
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
     extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
@@ -253,11 +258,18 @@ function normalizeLegacyHiddenSegments(input: unknown): string[] {
   });
 }
 
+function normalizeSidebarWidth(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) return DEFAULT_SIDEBAR_WIDTH;
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value));
+}
+
 function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
   const layout = normalizeSidebarLayout(input);
   return {
     statusbarEnabled: input.statusbarEnabled !== false,
     sidebarEnabled: input.sidebarEnabled !== false,
+    sidebarMode: input.sidebarMode === "auto" ? "auto" : "manual",
+    sidebarWidth: normalizeSidebarWidth(input.sidebarWidth),
     zones: Object.hasOwn(input, "zones")
       ? normalizeZones(input.zones)
       : Object.hasOwn(input, "segments") && Array.isArray(input.segments)
@@ -352,6 +364,8 @@ export function saveConfig(
   const next: PiStatusConfig = {
     statusbarEnabled: config.statusbarEnabled,
     sidebarEnabled: config.sidebarEnabled,
+    sidebarMode: config.sidebarMode,
+    sidebarWidth: config.sidebarWidth,
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     extensionStatusZone: config.extensionStatusZone,
