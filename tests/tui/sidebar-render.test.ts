@@ -10,6 +10,7 @@ import {
 } from "../../src/shared/types.ts";
 import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
+import { createUntrustedWorkspacePulseSnapshot } from "../../src/core/workspace-pulse.ts";
 import { buildSidebarSnapshot, renderSidebarLines } from "../../src/tui/sidebar-render.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
@@ -192,6 +193,17 @@ describe("buildSidebarSnapshot", () => {
     ).not.toContain("• ready");
     // extensionSegments.hidden does not affect sidebar — "err" still shows.
     expect(snapshot.alerts.find((a) => a.key === "err")).toBeDefined();
+  });
+
+  it("names an untrusted project after the cwd and marks the pulse untrusted", () => {
+    const footer = {
+      ...makeInput().footer,
+      cwd: "/p/demo",
+      workspacePulse: createUntrustedWorkspacePulseSnapshot("/p/demo"),
+    };
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.projectName).toBe("demo");
+    expect(snap.pulse).toEqual({ ahead: 0, behind: 0, staged: 0, unstaged: 0, untrusted: true });
   });
 
   it("clones the complete live activity into the snapshot", () => {

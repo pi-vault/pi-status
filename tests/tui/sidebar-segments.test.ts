@@ -469,3 +469,24 @@ describe("sidebar catalog dynamic identities", () => {
     expect(textOf(catalog.get("builtin:model"))).toBe("claude-sonnet");
   });
 });
+
+describe("untrusted workspace segments", () => {
+  it("shows only the untrusted placeholder among workspace Git rows", () => {
+    const catalog = byId(
+      buildSidebarSegmentCatalog(
+        snapshot({
+          projectName: "demo",
+          pulse: { ahead: 0, behind: 0, staged: 0, unstaged: 0, untrusted: true },
+        }),
+      ),
+    );
+    expect(textOf(catalog.get("builtin:project"))).toBe("demo");
+    expect(catalog.get("builtin:branch")?.content).toMatchObject({
+      kind: "metric",
+      value: [{ text: "Git · untrusted", role: "muted" }],
+    });
+    for (const id of ["builtin:directory", "builtin:changes", "builtin:sync-state"]) {
+      expect(catalog.get(id)?.content).toBeNull();
+    }
+  });
+});

@@ -25,6 +25,7 @@ export interface WorkspacePulseAggregates {
   staged: number;
   unstaged: number;
   relativeCwd?: string;
+  untrusted?: true;
 }
 
 export interface SidebarSnapshot {
@@ -84,6 +85,12 @@ function deriveProjectName(footer: Omit<FooterRenderInput, "zones" | "extensionS
 } {
   const pulse = footer.workspacePulse;
   if (!pulse) return { projectName: basename(footer.cwd) };
+  if (pulse.status === "untrusted") {
+    return {
+      projectName: basename(footer.cwd),
+      pulse: { ahead: 0, behind: 0, staged: 0, unstaged: 0, untrusted: true },
+    };
+  }
   const aggregates: WorkspacePulseAggregates = {
     branch: pulse.branch,
     ahead: pulse.ahead,
