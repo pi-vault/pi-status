@@ -120,6 +120,10 @@ function noColorTheme(): StatusLineTheme {
   };
 }
 
+function tagTheme(): StatusLineTheme {
+  return { ...noColorTheme(), fg: (color, text) => `<${color}>${text}</${color}>` };
+}
+
 function contributedPanel(): SidebarPanelData {
   return {
     id: "ext:sample",
@@ -552,6 +556,44 @@ describe("renderSidebarLines panel composition", () => {
     ).join("\n");
     expect(text).toMatch(/SAMPLE/);
     expect(text).toContain("row one");
+  });
+
+  it("renders a rows-only contributed panel exactly as 0.7.0", () => {
+    const input = makeInput();
+    const layout = [
+      ...input.config.sidebarPanelLayout.map((panel) => ({
+        ...panel,
+        visible: panel.id === "agent",
+      })),
+      { id: "ext:sample" as never, visible: true, segments: [] },
+    ];
+    const lines = render(
+      {
+        ...input,
+        config: { ...input.config, sidebarPanelLayout: layout },
+        sidebarPanels: [contributedPanel()],
+      },
+      120,
+      12,
+      { colorEnabled: true },
+      tagTheme(),
+    );
+    expect(lines).toMatchInlineSnapshot(`
+      [
+        "<dim>│</dim> <accent>╭─ ✦ </accent><accent>AGENT</accent> <accent>──────────────────────────────────────────────────────[0m",
+        "<dim>│</dim> <dim>│</dim> <primary>—</primary><dim> · </dim><dim>Off</dim>                                              [0m",
+        "<dim>│</dim> <dim>│</dim> <dim>—</dim>                                                                                  [0m",
+        "<dim>│</dim> <dim>╰─────────────────────────────────────────────────────────────────────────────────────────────────────[0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim> <primary>╭─ ✦ </primary><primary>SAMPLE</primary> <primary>────────────────────────────────────────────────[0m",
+        "<dim>│</dim> <dim>│</dim> <primary>row one</primary>                                                                    [0m",
+        "<dim>│</dim> <dim>│</dim> <accent>row two</accent>                                                                      [0m",
+        "<dim>│</dim> <dim>╰─────────────────────────────────────────────────────────────────────────────────────────────────────[0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim>                                                                                                            [0m",
+      ]
+    `);
   });
 
   it("renders every identity class from its destination assignment", () => {
