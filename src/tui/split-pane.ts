@@ -1,5 +1,6 @@
 import { compositeTuiLine, matchesKey } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
+import type { SidebarMode } from "../shared/types.ts";
 
 const ENABLE_MOUSE = "[?1002h[?1006h";
 const DISABLE_MOUSE = "[?1006l[?1002l";
@@ -28,6 +29,18 @@ export const DEFAULT_SIDEBAR_WIDTH = 44;
 export const MIN_SIDEBAR_WIDTH = 28;
 export const MAX_SIDEBAR_WIDTH = 72;
 export const MIN_MAIN_WIDTH = 64;
+export const AUTO_MAIN_WIDTH = 80;
+export const AUTO_REOPEN_MARGIN = 8;
+
+/** Auto mode collapses below `80 + sidebar` and reopens only `AUTO_REOPEN_MARGIN` columns above that. */
+export function autoSidebarVisible(
+  terminalWidth: number,
+  sidebarWidth: number,
+  wasVisible: boolean,
+): boolean {
+  const threshold = AUTO_MAIN_WIDTH + sidebarWidth;
+  return terminalWidth >= (wasVisible ? threshold : threshold + AUTO_REOPEN_MARGIN);
+}
 
 const finiteInteger = (value: number, fallback: number): number =>
   Number.isFinite(value) ? Math.trunc(value) : fallback;
@@ -37,6 +50,7 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 
 export interface SplitPaneControllerOptions {
   defaultSidebarWidth?: number;
+  mode?: SidebarMode;
   minSidebarWidth?: number;
   maxSidebarWidth?: number;
   minMainWidth?: number;
@@ -45,6 +59,8 @@ export interface SplitPaneControllerOptions {
     handler: (data: string) => { consume?: boolean; data?: string } | undefined,
   ): () => void;
   onResizeChange?(resizing: boolean): void;
+  /** A confirmed resize (Enter, or mouse release after a drag) changed the width. */
+  onResizeCommit?(width: number): void;
   onWarning?(message: string): void;
 }
 
@@ -56,6 +72,8 @@ export interface SplitPaneController {
   hide(): void;
   setSidebarWidth(width: number): void;
   getSidebarWidth(): number;
+  setMode(mode: SidebarMode): void;
+  getMode(): SidebarMode;
   isEnabled(): boolean;
   isVisibleAtWidth(terminalWidth: number): boolean;
   getEffectiveWidth(): number;
@@ -119,6 +137,8 @@ export function createSplitPaneController(
   let originalRender: RenderFunction | undefined;
   let wrappedRender: RenderFunction | undefined;
   let trailingRenderer: TrailingRenderer | undefined;
+  let mode: SidebarMode = options.mode ?? "manual";
+  let autoVisible = true;
   let enabled = false;
   let disposed = false;
   let resizing = false;
@@ -139,8 +159,12 @@ export function createSplitPaneController(
     }
   };
 
+  // In auto mode this reports the state from the last render; only rendering advances the hysteresis.
   const visibleAt = (terminalWidth: number): boolean =>
-    enabled && Number.isFinite(terminalWidth) && terminalWidth >= minimumMain + minimumSidebar;
+    enabled &&
+    Number.isFinite(terminalWidth) &&
+    terminalWidth >= minimumMain + minimumSidebar &&
+    (mode !== "auto" || autoVisible);
 
   const effectiveSidebarWidth = (terminalWidth: number): number => {
     if (!visibleAt(terminalWidth)) return 0;
@@ -155,6 +179,7 @@ export function createSplitPaneController(
 
   const stopResize = (restore: boolean) => {
     if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
+    const commit = !restore && resizing && sidebarWidth !== resizeStartWidth;
     if (restore) sidebarWidth = resizeStartWidth;
     const shouldDisableMouse = mouseReportingEnabled;
     const unsubscribe = unsubscribeInput;
@@ -165,6 +190,7 @@ export function createSplitPaneController(
     if (shouldDisableMouse) safely(() => tui?.terminal.write(DISABLE_MOUSE));
     if (unsubscribe) safely(unsubscribe);
     safely(() => options.onResizeChange?.(false));
+    if (commit) safely(() => options.onResizeCommit?.(sidebarWidth));
     safely(requestRender);
   };
 
@@ -187,6 +213,9 @@ export function createSplitPaneController(
     originalRender = nextTui.render;
     const previousRender = nextTui.render;
     wrappedRender = function (this: TUI, terminalWidth: number): string[] {
+      if (enabled && mode === "auto" && Number.isFinite(terminalWidth)) {
+        autoVisible = autoSidebarVisible(terminalWidth, sidebarWidth, autoVisible);
+      }
       reconcileResizeWidth(terminalWidth);
       const reserved = effectiveSidebarWidth(terminalWidth);
       let baseLines: string[];
@@ -263,6 +292,7 @@ export function createSplitPaneController(
     attach,
     show() {
       if (disposed || enabled) return;
+      autoVisible = true;
       enabled = true;
       requestRender();
     },
@@ -279,11 +309,23 @@ export function createSplitPaneController(
       requestRender();
     },
     getSidebarWidth: () => sidebarWidth,
+    setMode(next: SidebarMode) {
+      if (disposed || next === mode) return;
+      stopResize(true);
+      mode = next;
+      autoVisible = true;
+      requestRender();
+    },
+    getMode: () => mode,
     getEffectiveWidth: () => {
       const cols = tui?.terminal.columns ?? 0;
       return visibleAt(cols) ? effectiveSidebarWidth(cols) : 0;
     },
     beginResize() {
+      if (mode === "auto") {
+        options.onWarning?.("Sidebar resize is off in auto mode");
+        return false;
+      }
       if (resizing) return true;
       if (!tui || !enabled) {
         options.onWarning?.("pi-status sidebar is not ready to resize");
