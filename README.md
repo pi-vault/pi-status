@@ -93,6 +93,8 @@ current-dir
 
 Output: a `Git` anchor, a clean / conflict indicator, the branch name, staged / unstaged / untracked counts, and ahead / behind upstream. When a refresh fails, the last known state stays visible with a stale marker. Changed-file paths are never retained or displayed.
 
+Workspace Pulse runs Git only in projects Pi trusts. In an untrusted project the `workspace-pulse` segment and the sidebar Workspace panel show `Git · untrusted`. To enable it, run `/trust`, save the decision, then restart Pi. `/reload` keeps the session's existing trust decision. Projects without project-local Pi resources are trusted by default. The separate `git-branch` segment comes from Pi's own footer data and is unaffected.
+
 ## Footer Layout And Extension Statuses
 
 The footer has four ordered zones: TL (top-left), TR (top-right), BL (bottom-left), BR (bottom-right). Top zones render on the first row, bottom zones on the second; left zones left-align, right zones right-align. The two rows fit independently at narrow widths — lower-priority items drop as needed, then the remaining line is truncated.
