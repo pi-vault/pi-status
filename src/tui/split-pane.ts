@@ -143,6 +143,8 @@ export function createSplitPaneController(
   let disposed = false;
   let resizing = false;
   let resizeStartWidth = sidebarWidth;
+  // The width the user picked during this resize. A terminal shrink can clamp `sidebarWidth` below it.
+  let chosenWidth = sidebarWidth;
   let dragging = false;
   let unsubscribeInput: (() => void) | undefined;
   let mouseReportingEnabled = false;
@@ -179,7 +181,7 @@ export function createSplitPaneController(
 
   const stopResize = (restore: boolean) => {
     if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
-    const commit = !restore && resizing && sidebarWidth !== resizeStartWidth;
+    const commit = !restore && resizing && chosenWidth !== resizeStartWidth;
     if (restore) sidebarWidth = resizeStartWidth;
     const shouldDisableMouse = mouseReportingEnabled;
     const unsubscribe = unsubscribeInput;
@@ -190,7 +192,7 @@ export function createSplitPaneController(
     if (shouldDisableMouse) safely(() => tui?.terminal.write(DISABLE_MOUSE));
     if (unsubscribe) safely(unsubscribe);
     safely(() => options.onResizeChange?.(false));
-    if (commit) safely(() => options.onResizeCommit?.(sidebarWidth));
+    if (commit) safely(() => options.onResizeCommit?.(chosenWidth));
     safely(requestRender);
   };
 
@@ -257,24 +259,29 @@ export function createSplitPaneController(
         const proposed = tui.terminal.columns - mouse.x + 1;
         const effectiveMax = Math.min(maximumSidebar, tui.terminal.columns - minimumMain);
         sidebarWidth = clamp(proposed, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
+        chosenWidth = sidebarWidth;
         requestRender();
       }
       return { consume: true };
     }
     if (matchesKey(data, "shift+left")) {
       controller.setSidebarWidth(sidebarWidth + 4);
+      chosenWidth = sidebarWidth;
       return { consume: true };
     }
     if (matchesKey(data, "shift+right")) {
       controller.setSidebarWidth(sidebarWidth - 4);
+      chosenWidth = sidebarWidth;
       return { consume: true };
     }
     if (matchesKey(data, "left")) {
       controller.setSidebarWidth(sidebarWidth + 1);
+      chosenWidth = sidebarWidth;
       return { consume: true };
     }
     if (matchesKey(data, "right")) {
       controller.setSidebarWidth(sidebarWidth - 1);
+      chosenWidth = sidebarWidth;
       return { consume: true };
     }
     if (matchesKey(data, "enter")) {
@@ -341,6 +348,7 @@ export function createSplitPaneController(
       }
       sidebarWidth = effectiveSidebarWidth(tui.terminal.columns);
       resizeStartWidth = sidebarWidth;
+      chosenWidth = sidebarWidth;
       dragging = false;
       resizing = true;
       try {

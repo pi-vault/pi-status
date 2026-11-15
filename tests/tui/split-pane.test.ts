@@ -832,6 +832,28 @@ describe("split pane resize commit", () => {
     expect(h.onResizeCommit).not.toHaveBeenCalled();
   });
 
+  it("does not fire when a terminal shrink only clamps an active resize", () => {
+    const h = commitHarness(140);
+    h.split.beginResize();
+    setColumns(h, 100);
+    h.tui.render(100);
+    expect(h.split.isResizing()).toBe(true);
+    expect(h.split.getSidebarWidth()).toBe(36);
+    h.send("\r");
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it("commits the width the user chose, not the width a later shrink clamped it to", () => {
+    const h = commitHarness(140);
+    h.split.beginResize();
+    for (let i = 0; i < 6; i += 1) h.send("\x1b[D");
+    setColumns(h, 100);
+    h.tui.render(100);
+    expect(h.split.getSidebarWidth()).toBe(36);
+    h.send("\r");
+    expect(h.onResizeCommit).toHaveBeenCalledExactlyOnceWith(50);
+  });
+
   it("does not fire when a terminal shrink cancels the resize", () => {
     const h = commitHarness();
     h.split.beginResize();
