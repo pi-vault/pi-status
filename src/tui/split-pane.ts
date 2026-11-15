@@ -1,5 +1,10 @@
 import { compositeTuiLine, matchesKey } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
+import {
+  createFullscreenSidebarLayout,
+  isFullscreenTui,
+  type FullscreenSidebarLayout,
+} from "./fullscreen-layout.ts";
 import type { SidebarMode } from "../shared/types.ts";
 
 const ENABLE_MOUSE = "[?1002h[?1006h";
@@ -73,6 +78,9 @@ export interface SplitPaneController {
   setSidebarWidth(width: number): void;
   getSidebarWidth(): number;
   setMode(mode: SidebarMode): void;
+  /** Fullscreen only: wrap Pi's current layout root again, e.g. after something replaced it. */
+  syncLayout(): void;
+  isFullscreen(): boolean;
   getMode(): SidebarMode;
   isEnabled(): boolean;
   isVisibleAtWidth(terminalWidth: number): boolean;
@@ -148,6 +156,7 @@ export function createSplitPaneController(
   let dragging = false;
   let unsubscribeInput: (() => void) | undefined;
   let mouseReportingEnabled = false;
+  let layout: FullscreenSidebarLayout | undefined;
   let controller: SplitPaneController;
 
   const safely = (action: () => unknown) => {
@@ -177,7 +186,11 @@ export function createSplitPaneController(
     );
   };
 
-  const requestRender = () => tui?.requestRender();
+  // Keeps the fullscreen HStack basis in step with `sidebarWidth`; never wraps a foreign root.
+  const requestRender = () => {
+    safely(() => layout?.refresh());
+    tui?.requestRender();
+  };
 
   const stopResize = (restore: boolean) => {
     if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
@@ -206,12 +219,53 @@ export function createSplitPaneController(
     sidebarWidth = clamp(sidebarWidth, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
   };
 
+  const installLayout = () => {
+    if (!layout) return;
+    try {
+      layout.install();
+    } catch (error) {
+      layout.restore();
+      enabled = false;
+      safely(() => options.onError?.(error));
+    }
+  };
+
   const attach = (nextTui: TUI, renderTrailing?: TrailingRenderer) => {
     if (disposed) throw new Error("Cannot attach a disposed split pane");
     if (tui === nextTui) return;
     if (tui) throw new Error("Split pane is already attached to another TUI");
     tui = nextTui;
     trailingRenderer = renderTrailing;
+    if (isFullscreenTui(nextTui)) {
+      layout = createFullscreenSidebarLayout({
+        tui: nextTui,
+        sidebar: {
+          render: (width) => {
+            try {
+              const height = Math.max(0, Math.trunc(nextTui.terminal.rows));
+              return [...(trailingRenderer?.(width, height) ?? [])];
+            } catch (error) {
+              safely(() => options.onError?.(error));
+              return [];
+            }
+          },
+          invalidate() {},
+        },
+        getSidebarWidth: () => sidebarWidth,
+        isSidebarVisible: (width) => {
+          if (enabled && mode === "auto" && Number.isFinite(width)) {
+            autoVisible = autoSidebarVisible(width, sidebarWidth, autoVisible);
+          }
+          reconcileResizeWidth(width);
+          return visibleAt(width);
+        },
+        minMainWidth: minimumMain,
+        minSidebarWidth: minimumSidebar,
+        maxSidebarWidth: maximumSidebar,
+      });
+      requestRender();
+      return;
+    }
     originalRender = nextTui.render;
     const previousRender = nextTui.render;
     wrappedRender = function (this: TUI, terminalWidth: number): string[] {
@@ -245,6 +299,8 @@ export function createSplitPaneController(
 
   const handleResizeInput = (data: string): { consume?: boolean; data?: string } | undefined => {
     const mouse = parseSgrMouseEvent(data);
+    // Pi's fullscreen viewport owns the mouse; resize is keyboard-only there.
+    if (mouse && layout) return undefined;
     if (mouse) {
       if (mouse.release) {
         if (dragging) stopResize(false);
@@ -301,14 +357,22 @@ export function createSplitPaneController(
       if (disposed || enabled) return;
       autoVisible = true;
       enabled = true;
+      installLayout();
       requestRender();
     },
     hide() {
       stopResize(true);
       if (!enabled) return;
       enabled = false;
+      safely(() => layout?.restore());
       requestRender();
     },
+    syncLayout() {
+      if (disposed || !enabled) return;
+      installLayout();
+      requestRender();
+    },
+    isFullscreen: () => layout !== undefined,
     setSidebarWidth(width: number) {
       const next = clamp(finiteInteger(width, sidebarWidth), minimumSidebar, maximumSidebar);
       if (next === sidebarWidth) return;
@@ -353,8 +417,10 @@ export function createSplitPaneController(
       resizing = true;
       try {
         unsubscribeInput = options.subscribeInput(handleResizeInput);
-        mouseReportingEnabled = true;
-        tui.terminal.write(ENABLE_MOUSE);
+        if (!layout) {
+          mouseReportingEnabled = true;
+          tui.terminal.write(ENABLE_MOUSE);
+        }
         options.onResizeChange?.(true);
         requestRender();
         return true;
@@ -375,6 +441,8 @@ export function createSplitPaneController(
       stopResize(true);
       disposed = true;
       enabled = false;
+      safely(() => layout?.restore());
+      layout = undefined;
       if (tui && originalRender && tui.render === wrappedRender) tui.render = originalRender;
       tui?.requestRender();
       tui = undefined;

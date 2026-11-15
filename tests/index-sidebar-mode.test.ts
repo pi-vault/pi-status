@@ -57,6 +57,7 @@ async function setup(initial: PiStatusConfig) {
         setMode: vi.fn(),
         beginResize: vi.fn(() => true),
         requestRender: vi.fn(),
+        syncLayout: vi.fn(),
         dispose: vi.fn(),
         getEffectiveWidth: vi.fn(() => 0),
         isShown: vi.fn(() => true),
@@ -149,6 +150,18 @@ describe("sidebar mode wiring", () => {
     if (!dashboard) throw new Error("expected dashboard");
     dashboard.save({ ...dashboard.config, sidebarMode: "auto" }, dashboard.sidebarLayout);
     expect(t.controllers[0]?.controller.setMode).toHaveBeenLastCalledWith("auto");
+  });
+
+  it("re-syncs the sidebar layout after a /statusline save", async () => {
+    const t = await setup(config());
+    const ctx = ctxFor();
+    t.start(ctx);
+    await getRegisteredCommand(t.registerCommandCalls, "statusline").handler("", ctx);
+    const dashboard = t.dashboards[0];
+    if (!dashboard) throw new Error("expected dashboard");
+    expect(t.controllers[0]?.controller.syncLayout).not.toHaveBeenCalled();
+    dashboard.save({ ...dashboard.config }, dashboard.sidebarLayout);
+    expect(t.controllers[0]?.controller.syncLayout).toHaveBeenCalledOnce();
   });
 });
 

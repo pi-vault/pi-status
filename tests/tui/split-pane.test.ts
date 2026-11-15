@@ -1,5 +1,5 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
-import type { TUI } from "@earendil-works/pi-tui";
+import type { Component, TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
   AUTO_MAIN_WIDTH,
@@ -862,5 +862,172 @@ describe("split pane resize commit", () => {
     h.tui.render(91);
     expect(h.split.isResizing()).toBe(false);
     expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe("split pane fullscreen", () => {
+  const VIEWPORT = Symbol.for("@earendil-works/pi-tui/viewport");
+  const strip = (lines: string[]) => lines.map((line) => stripTerminalSequences(line).trim());
+
+  function fsHarness(options: Parameters<typeof createSplitPaneController>[0] = {}, columns = 160) {
+    const main: Component = { render: (w) => [`main:${w}`], invalidate() {} };
+    const baseRender = vi.fn((w: number) => [`base:${w}`]);
+    const write = vi.fn();
+    const tui = {
+      mode: "fullscreen",
+      [VIEWPORT]: true,
+      render: baseRender,
+      layoutRoot: main as Component | undefined,
+      setLayoutRoot(c: Component | undefined) {
+        this.layoutRoot = c;
+      },
+      requestRender: vi.fn(),
+      terminal: { columns, rows: 40, write },
+    };
+    let input: ((data: string) => { consume?: boolean; data?: string } | undefined) | undefined;
+    const trailing = vi.fn((w: number, h: number) => [`side:${w}x${h}`]);
+    const split = createSplitPaneController({
+      subscribeInput(handler) {
+        input = handler;
+        return () => undefined;
+      },
+      ...options,
+    });
+    split.attach(tui as unknown as TUI, trailing);
+    return {
+      tui,
+      main,
+      baseRender,
+      write,
+      split,
+      trailing,
+      send: (data: string) => input?.(data),
+      frame: (width = columns) => strip(tui.layoutRoot?.render(width) ?? []),
+    };
+  }
+
+  it("installs the HStack on show instead of patching render", () => {
+    const h = fsHarness();
+    expect(h.tui.layoutRoot).toBe(h.main);
+    h.split.show();
+    expect(h.tui.render).toBe(h.baseRender);
+    expect(h.tui.layoutRoot).not.toBe(h.main);
+    const [line] = h.frame();
+    expect(line).toContain("main:116");
+    expect(line).toContain("side:44x40");
+  });
+
+  it("restores the root on hide and re-wraps on show", () => {
+    const h = fsHarness();
+    h.split.show();
+    h.split.hide();
+    expect(h.tui.layoutRoot).toBe(h.main);
+    h.split.show();
+    expect(h.tui.layoutRoot).not.toBe(h.main);
+  });
+
+  it("restores the root on dispose", () => {
+    const h = fsHarness();
+    h.split.show();
+    h.split.dispose();
+    expect(h.tui.layoutRoot).toBe(h.main);
+    expect(h.tui.render).toBe(h.baseRender);
+  });
+
+  it("hides the sidebar entry below 92 columns in manual mode", () => {
+    const h = fsHarness();
+    h.split.show();
+    expect(h.frame(91)).toEqual(["main:91"]);
+    expect(h.frame(92)[0]).toContain("side:");
+  });
+
+  it("follows the auto hysteresis in fullscreen", () => {
+    const h = fsHarness({ mode: "auto" });
+    h.split.show();
+    expect(h.frame(124)[0]).toContain("side:");
+    expect(h.frame(123)).toEqual(["main:123"]);
+    expect(h.frame(131)).toEqual(["main:131"]);
+    expect(h.frame(132)[0]).toContain("side:");
+  });
+
+  it("rebuilds the HStack on arrow keys and commits on Enter", () => {
+    const onResizeCommit = vi.fn();
+    const h = fsHarness({ onResizeCommit });
+    h.split.show();
+    h.split.beginResize();
+    h.send("\x1b[D");
+    h.send("\x1b[D");
+    expect(h.frame()[0]).toContain("side:46x40");
+    h.send("\r");
+    expect(onResizeCommit).toHaveBeenCalledExactlyOnceWith(46);
+  });
+
+  it("reverts the HStack width on Escape", () => {
+    const h = fsHarness();
+    h.split.show();
+    h.split.beginResize();
+    for (let i = 0; i < 3; i += 1) h.send("\x1b[D");
+    expect(h.frame()[0]).toContain("side:47x40");
+    h.send("\x1b");
+    expect(h.frame()[0]).toContain("side:44x40");
+  });
+
+  it("never writes mouse reporting sequences in fullscreen", () => {
+    const h = fsHarness();
+    h.split.show();
+    h.split.beginResize();
+    h.send("\x1b[D");
+    h.send("\r");
+    h.split.beginResize();
+    h.send("\x1b");
+    h.split.beginResize();
+    h.split.hide();
+    h.split.show();
+    h.split.beginResize();
+    h.split.dispose();
+    expect(h.write).not.toHaveBeenCalled();
+  });
+
+  it("does not consume mouse input during fullscreen resize", () => {
+    const h = fsHarness();
+    h.split.show();
+    h.split.beginResize();
+    expect(h.send(press(117))).toBeUndefined();
+    expect(h.send(motion(100))).toBeUndefined();
+    expect(h.send(release(100))).toBeUndefined();
+    expect(h.split.isResizing()).toBe(true);
+  });
+
+  it("does not re-wrap a root replaced by someone else on ordinary renders", () => {
+    const h = fsHarness();
+    h.split.show();
+    const other: Component = { render: (w) => [`other:${w}`], invalidate() {} };
+    h.tui.layoutRoot = other;
+    h.split.requestRender();
+    h.split.setSidebarWidth(50);
+    expect(h.tui.layoutRoot).toBe(other);
+    h.split.syncLayout();
+    expect(h.tui.layoutRoot).not.toBe(other);
+    expect(h.frame()[0]).toContain("other:110");
+  });
+
+  it("keeps Pi's layout when the trailing renderer throws", () => {
+    const onError = vi.fn();
+    const h = fsHarness({ onError });
+    h.trailing.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    h.split.show();
+    expect(h.frame()[0]).toContain("main:116");
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("reports fullscreen only after attaching to a fullscreen TUI", () => {
+    expect(createSplitPaneController().isFullscreen()).toBe(false);
+    const regular = harness();
+    const split = createSplitPaneController();
+    split.attach(regular.tui);
+    expect(split.isFullscreen()).toBe(false);
+    expect(fsHarness().split.isFullscreen()).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import { isViewportTUI } from "@earendil-works/pi-tui";
 import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.ts";
@@ -39,13 +40,13 @@ export interface SidebarController {
   beginResize(): boolean;
   getEffectiveWidth(): number;
   requestRender(): void;
+  /** Fullscreen: wrap Pi's current layout root again after a settings save. */
+  syncLayout(): void;
   dispose(): void;
 }
 
-const VIEWPORT_TUI = Symbol.for("@earendil-works/pi-tui/viewport");
-
 const supportsSidebar = (tui: TUI | undefined): boolean =>
-  tui !== undefined && (tui as unknown as Record<symbol, unknown>)[VIEWPORT_TUI] !== true;
+  tui !== undefined && (!isViewportTUI(tui) || tui.mode === "fullscreen");
 
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
   const split: SplitPaneController = createSplitPaneController({
@@ -118,7 +119,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
                 statusTheme,
                 width,
                 height,
-                { resizing: split.isResizing() },
+                { resizing: split.isResizing(), keyboardOnlyResize: split.isFullscreen() },
               );
             } catch (error) {
               safely(() => options.onError?.(error));
@@ -192,6 +193,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
         ? split.getEffectiveWidth()
         : 0;
     },
+    syncLayout: () => safely(() => split.syncLayout()),
     requestRender: () => {
       safely(() => requestOverlayRender?.());
       safely(() => split.requestRender());
