@@ -22,12 +22,14 @@ import {
   formatTotalOutputTokens,
   formatTtft,
   formatTurnProgress,
+  formatWorkspacePulseSegment,
   formatUsedTokens,
   formatWeeklyLimit,
   getRateWindow,
   segmentFormatters,
   type SegmentFormatter,
 } from "../../src/tui/formatters.ts";
+import { createUntrustedWorkspacePulseSnapshot } from "../../src/core/workspace-pulse.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 import { formatSegment } from "../../src/tui/render.ts";
 
@@ -842,5 +844,12 @@ describe("getRateWindow", () => {
       },
     });
     expect(getRateWindow(sample, "weekly")).toEqual({ usedPercent: 42 });
+  });
+});
+
+describe("formatWorkspacePulseSegment untrusted", () => {
+  it("renders the untrusted pulse dim", () => {
+    const value = input({ workspacePulse: createUntrustedWorkspacePulseSnapshot("/p/demo") });
+    expect(formatWorkspacePulseSegment(value, identityTheme)).toEqual(["Git · untrusted", "dim"]);
   });
 });

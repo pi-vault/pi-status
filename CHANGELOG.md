@@ -2,6 +2,12 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.6.1 - 2026-11-14
+
+### Security
+
+- Workspace Pulse never runs Git in projects Pi has not trusted. The segment and the sidebar Workspace panel show a muted `Git · untrusted` placeholder instead. Run `/trust`, then restart Pi, to enable it.
+
 ## 0.6.0 - 2026-11-14
 
 ### Compatibility

@@ -126,7 +126,7 @@ Behaviour:
 
 - At each `session_start`, read `ctx.isProjectTrusted()`.
   - Trust cannot change mid-session: `/trust` saves the decision and asks for a restart.
-  - `/reload` re-runs `session_start`, so it picks up a new decision.
+  - `/reload` re-runs `session_start` but keeps the runtime's existing trust value (Pi 1.5.2), so a new decision takes effect only after restarting Pi.
 - When untrusted, the workspace-pulse runtime is never created or started, so neither `rev-parse` nor `status` runs. This applies even if the `workspace-pulse` segment is configured or the workspace sidebar panel is visible.
 - Display when untrusted:
   - Footer `workspace-pulse` segment renders `Git · untrusted` in the muted role.

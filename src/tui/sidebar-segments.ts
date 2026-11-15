@@ -393,7 +393,11 @@ function workspaceSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
       dropOrder: 70,
       requiresWorkspacePulse: true,
       resolve: () =>
-        pulse?.branch ? metric(spans([text(pulse.branch), "accent"]), "workspace-identity") : null,
+        pulse?.untrusted
+          ? metric(spans(["Git · untrusted", "muted"]), "workspace-identity")
+          : pulse?.branch
+            ? metric(spans([text(pulse.branch), "accent"]), "workspace-identity")
+            : null,
     },
     {
       id: "builtin:changes",

@@ -185,7 +185,7 @@ Open the PR. After merge: `git tag v0.6.0 && git push origin v0.6.0`.
 
 ### Phase 1 Review Focus
 
-- `/trust` then `/reload`: the second `session_start` must create the runtime and run Git. Test in Task 1.2.
+- A later trusted `session_start` (after `/trust` and a Pi restart) must create the runtime and run Git. `/reload` keeps the existing trust value in Pi 1.5.2. Test in Task 1.2.
 - `isProjectTrusted()` throws: treat the project as untrusted, no Git. Test in Task 1.2.
 - Statusbar disabled, sidebar workspace panel visible, untrusted: the sidebar shows the placeholder and no Git runs. Test in Task 1.2.
 - `session_tree` in an untrusted session must not create a runtime through `applySurfaceVisibility → installFooter`. Test in Task 1.2.
@@ -275,7 +275,7 @@ Add a `describe("untrusted projects")` block to `tests/index-workspace-pulse.tes
 - `it("never runs git when untrusted with only the sidebar workspace panel visible")`: copy the setup of the test at line 308 with untrusted ctx. Expect `execFileMock` not called.
 - `it("treats a throwing isProjectTrusted as untrusted")`: `isProjectTrusted: () => { throw new Error("x"); }`. Expect not called.
 - `it("does not create a runtime on session_tree in an untrusted session")`: untrusted `session_start`, then `session_tree` with the same ctx. Expect not called.
-- `it("runs git after a reload in a newly trusted project")`: `session_start` untrusted (not called), then `session_start` trusted (called once).
+- `it("runs git when a later session_start is trusted")`: `session_start` untrusted (not called), then `session_start` trusted (called once).
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -307,7 +307,7 @@ git commit -m "fix: never run git in untrusted projects"
 
 - [ ] **Step 1: Document**
 
-README Workspace Pulse: "Workspace Pulse runs Git only in projects Pi trusts. In an untrusted project the segment and the sidebar show `Git · untrusted`; run `/trust`, then restart Pi or `/reload`." CHANGELOG `## 0.6.1`, Security: "Never run Git in untrusted projects."
+README Workspace Pulse: "Workspace Pulse runs Git only in projects Pi trusts. In an untrusted project the segment and the sidebar show `Git · untrusted`; run `/trust`, then restart Pi." CHANGELOG `## 0.6.1`, Security: "Never run Git in untrusted projects."
 
 - [ ] **Step 2: Bump the version and run the release check**
 

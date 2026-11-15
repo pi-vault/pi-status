@@ -11,6 +11,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 import {
+  createUntrustedWorkspacePulseSnapshot,
   createWorkspacePulseRuntime,
   formatWorkspacePulse,
   parseGitStatusV2,
@@ -1283,5 +1284,16 @@ describe("formatWorkspacePulse", () => {
     });
     expect(out).not.toMatch(/ENOENT|fatal/);
     expect(out).not.toMatch(/\b(?!feature\/x\b)[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+/);
+  });
+});
+
+describe("untrusted workspace pulse", () => {
+  it("formats the untrusted snapshot as a placeholder", () => {
+    const snap = createUntrustedWorkspacePulseSnapshot("/p/demo");
+    expect(snap.status).toBe("untrusted");
+    expect(snap.directory).toBe("/p/demo");
+    expect(snap.root).toBeUndefined();
+    expect(snap.branch).toBeUndefined();
+    expect(formatWorkspacePulse(snap)).toBe("Git · untrusted");
   });
 });
