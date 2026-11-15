@@ -744,6 +744,29 @@ function todoRowSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
 function contributionSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
   const definitions: SegmentDefinition[] = [];
   for (const panel of snapshot.sidebarPanels) {
+    if (panel.keyValues !== undefined) {
+      panel.keyValues.forEach((keyValue, index) => {
+        definitions.push({
+          id: sidebarAnonymousContributionSegmentId(panel.id, panel.generation, index),
+          label: text(panel.title),
+          description: `Key/value row contributed by ${text(panel.source)}.`,
+          defaultPanelId: panel.id,
+          persistence: "session",
+          priority: "optional",
+          dropOrder: 24,
+          resolve: () => ({
+            kind: "keyValue",
+            label: { text: text(keyValue.label), role: keyValue.labelRole ?? "muted" },
+            value: {
+              text: text(keyValue.value),
+              role: keyValue.valueRole ?? panel.role ?? "primary",
+            },
+            ...(keyValue.progress !== undefined ? { progress: keyValue.progress } : {}),
+          }),
+        });
+      });
+      continue;
+    }
     panel.rows.forEach((row, index) => {
       const explicitId =
         typeof row.id === "string" ? sidebarContributionSegmentId(panel.id, row.id) : undefined;

@@ -344,6 +344,7 @@ function entryRows(
         for (const row of entry.content.rows) rows.push(paintSpans(row, palette));
         continue;
       }
+      if (entry.content.kind === "keyValue") continue;
       const next = entries[index + 1];
       const nextContent = next?.content;
       if (next && nextContent?.kind === "metric" && collapsesWith(entry, next)) {

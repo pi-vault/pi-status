@@ -131,7 +131,17 @@ export interface SidebarBlockContent {
   rows: SidebarSegmentSpan[][];
 }
 
-export type SidebarSegmentContent = SidebarMetricContent | SidebarBlockContent;
+export interface SidebarKeyValueContent {
+  kind: "keyValue";
+  label: SidebarSegmentSpan;
+  value: SidebarSegmentSpan;
+  progress?: number;
+}
+
+export type SidebarSegmentContent =
+  | SidebarMetricContent
+  | SidebarBlockContent
+  | SidebarKeyValueContent;
 
 export interface SidebarCatalogEntry {
   id: string;
