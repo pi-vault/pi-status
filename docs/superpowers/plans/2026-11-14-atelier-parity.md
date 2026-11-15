@@ -875,6 +875,8 @@ Open the PR. After merge: `git tag v0.8.0 && git push origin v0.8.0`.
 
 ## Phase 4 — Auto sidebar, saved width, toggle key (release 0.9.0)
 
+> Superseded 2026-11-14 after checking against `v0.8.0`: execute `2026-11-14-atelier-parity-phase-4-auto-sidebar.md` instead. That file's "Revision notes" list what changed. The tasks below are kept for history.
+
 **Goal:** the sidebar can collapse and reopen with terminal width (opt-in), remembers its width across sessions, and can be toggled from a configurable key.
 
 **Architecture:** Three new optional config keys are normalized in `src/core/config.ts`. The split pane gains a mode and a hysteresis flag that is updated only at render time, plus an `onResizeCommit` callback fired on Enter or mouse release. The sidebar controller forwards mode and width. `src/index.ts` registers the toggle shortcut once, keeps a session-scoped visibility override, and persists the width on commit. The Settings tab gains one row.
