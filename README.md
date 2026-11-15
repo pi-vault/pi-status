@@ -225,7 +225,13 @@ RPC and print contexts do not receive direct notifications.
 
 `@pi-vault/pi-status` installs a right-edge, non-capturing sidebar that surfaces the same live data the footer tracks — session, run, turn, tools, workspace pulse, extension statuses — alongside optional contributions from other extensions. The sidebar is on by default and runs only in TUI sessions.
 
-On the regular Pi TUI, the live Sidebar is composed into the trailing logical render block of `tui.render()` and scrolls away with that block rather than staying fixed to the viewport. Pi exposes no arbitrary historical scroll-position API, so the Sidebar does not pin to a separately selected terminal scroll position. Fullscreen and viewport TUIs do not render the Sidebar: the custom overlay lifecycle bridge is mounted but its component is invisible, and the trailing renderer is not installed.
+On the regular Pi TUI, the live Sidebar is composed into the trailing logical render block of `tui.render()` and scrolls away with that block rather than staying fixed to the viewport. Pi exposes no arbitrary historical scroll-position API, so the Sidebar does not pin to a separately selected terminal scroll position. In Pi's fullscreen mode the Sidebar is a column beside the transcript: pi-status wraps Pi's fullscreen layout in a two-column layout, so it stays fixed to the viewport and scrolls independently of the chat. The mode is detected when Pi starts. Pi blocks switching between fullscreen and regular mode while pi-status is loaded, so restart Pi after changing the mode setting.
+
+Fullscreen limitations:
+
+- Resize is keyboard-only (no divider drag), because Pi's fullscreen viewport owns the mouse.
+- A text selection that starts outside the transcript (for example in the editor) can include Sidebar text.
+- Sidebar rows beside an inline image in the transcript are blank, as in regular mode.
 
 ### Built-in panels and order
 
@@ -243,7 +249,7 @@ Nine built-in panels ship in this default order:
 
 ### Width and resize
 
-At very narrow widths the sidebar collapses to a compact layout; at widths below 92 columns it hides entirely to preserve the main viewport. Press `Ctrl+Shift+R` to enter temporary Resize mode, then use arrow keys to adjust the width, `Enter` to accept, `Escape` to restore the previous width. You can also drag the divider with the mouse while in Resize mode.
+At very narrow widths the sidebar collapses to a compact layout; at widths below 92 columns it hides entirely to preserve the main viewport. Press `Ctrl+Shift+R` to enter temporary Resize mode, then use arrow keys to adjust the width, `Enter` to accept, `Escape` to restore the previous width. On the regular TUI you can also drag the divider with the mouse while in Resize mode; in fullscreen, resize is keyboard-only.
 
 A confirmed resize that changed the width (`Enter`, or releasing the mouse after a drag) becomes `sidebarWidth` and is saved to `statusline.json` for new sessions. `Escape`, an unchanged `Enter`, and terminal resizes never change the saved width. You can also set `sidebarWidth` by hand in the file.
 
