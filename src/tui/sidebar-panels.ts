@@ -72,11 +72,23 @@ export interface SidebarPanelRow {
   id?: string;
 }
 
+/** Responsive label/value row laid out by pi-status at the current sidebar width. */
+export interface SidebarPanelKeyValue {
+  label: string;
+  value: string;
+  labelRole?: SidebarPanelRole;
+  valueRole?: SidebarPanelRole;
+  /** Optional finite fraction from 0 to 1, inclusive. Invalid values are dropped. */
+  progress?: number;
+}
+
 /** Structured, presentation-only data accepted from another extension. */
 export interface SidebarPanelContribution {
   id: ContributedSidebarPanelId;
   title: string;
   rows: readonly (string | SidebarPanelRow)[];
+  /** Optional preferred representation; `rows` remains the compatibility fallback. */
+  keyValues?: readonly SidebarPanelKeyValue[];
   role?: SidebarPanelRole;
 }
 
@@ -84,6 +96,7 @@ interface SanitizedSidebarPanelContribution {
   id: ContributedSidebarPanelId;
   title: string;
   rows: SidebarPanelRow[];
+  keyValues?: SidebarPanelKeyValue[];
   role?: SidebarPanelRole;
 }
 
@@ -233,6 +246,39 @@ function fitsSidebarPanelText(value: string, maxChars: number): boolean {
   return Array.from(cleanSidebarPanelText(value)).length <= maxChars;
 }
 
+function sanitizeKeyValues(value: unknown): SidebarPanelKeyValue[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > SIDEBAR_PANEL_MAX_ROWS)
+    return undefined;
+  const entries: SidebarPanelKeyValue[] = [];
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      !isSidebarPanelTextWithinRawLimit(entry.label, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS) ||
+      !isSidebarPanelTextWithinRawLimit(entry.value, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS) ||
+      !fitsSidebarPanelText(entry.label, SIDEBAR_PANEL_MAX_ROW_CHARS) ||
+      !fitsSidebarPanelText(entry.value, SIDEBAR_PANEL_MAX_ROW_CHARS)
+    )
+      return undefined;
+    const label = sanitizeSidebarPanelText(entry.label, SIDEBAR_PANEL_MAX_ROW_CHARS);
+    const text = sanitizeSidebarPanelText(entry.value, SIDEBAR_PANEL_MAX_ROW_CHARS);
+    if (label === "" && text === "") continue;
+    const progress = entry.progress;
+    entries.push({
+      label,
+      value: text,
+      ...(isSidebarPanelRole(entry.labelRole) ? { labelRole: entry.labelRole } : {}),
+      ...(isSidebarPanelRole(entry.valueRole) ? { valueRole: entry.valueRole } : {}),
+      ...(typeof progress === "number" &&
+      Number.isFinite(progress) &&
+      progress >= 0 &&
+      progress <= 1
+        ? { progress }
+        : {}),
+    });
+  }
+  return entries.length > 0 ? entries : undefined;
+}
+
 function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution | undefined {
   if (
     !isRecord(value) ||
@@ -268,10 +314,12 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
       ...(keepId ? { id } : {}),
     });
   }
+  const keyValues = sanitizeKeyValues(value.keyValues);
   return {
     id: value.id,
     title: sanitizeSidebarPanelText(value.title, SIDEBAR_PANEL_MAX_TITLE_CHARS),
     rows,
+    ...(keyValues ? { keyValues } : {}),
     ...(isSidebarPanelRole(value.role) ? { role: value.role } : {}),
   };
 }
@@ -405,6 +453,25 @@ export function createSidebarPanelRegistry(
       const a = first.rows[index];
       const b = second.rows[index];
       if (!a || !b || a.text !== b.text || a.role !== b.role || a.id !== b.id) return false;
+    }
+    const firstKeyValues = first.keyValues;
+    const secondKeyValues = second.keyValues;
+    if (firstKeyValues === undefined || secondKeyValues === undefined)
+      return firstKeyValues === secondKeyValues;
+    if (firstKeyValues.length !== secondKeyValues.length) return false;
+    for (let index = 0; index < firstKeyValues.length; index += 1) {
+      const a = firstKeyValues[index];
+      const b = secondKeyValues[index];
+      if (
+        !a ||
+        !b ||
+        a.label !== b.label ||
+        a.value !== b.value ||
+        a.labelRole !== b.labelRole ||
+        a.valueRole !== b.valueRole ||
+        a.progress !== b.progress
+      )
+        return false;
     }
     return true;
   };
