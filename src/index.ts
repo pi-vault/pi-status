@@ -688,6 +688,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       workspacePulseRuntime?.setOnChange(undefined);
       workspacePulseRuntime?.dispose();
       workspacePulseRuntime = undefined;
+      projectTrusted = false;
       activeTuiSessionManager = undefined;
     }
     runtimeState.update({ type: "session_shutdown" });

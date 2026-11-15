@@ -299,9 +299,29 @@ describe("workspace pulse wiring", () => {
       withEnabledZone({ bottomLeft: ["workspace-pulse"] });
       const { pi, handlers } = buildPiWithHandlers();
       createExtension(pi);
-      const ctx = untrustedCtx(() => false);
+      // An RPC session_start skips installFooter, so only session_tree can reach it.
+      const startCtx = createContext({ mode: "rpc", isProjectTrusted: () => false });
+      for (const h of handlers.get("session_start") ?? []) h({}, startCtx);
+      const treeCtx = createContext({
+        isProjectTrusted: () => false,
+        sessionManager: startCtx.sessionManager,
+      });
+      for (const h of handlers.get("session_tree") ?? []) h({}, treeCtx);
+      await flush();
+      expect(execFileMock).not.toHaveBeenCalled();
+    });
+
+    it("forgets project trust on session_shutdown", async () => {
+      withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+      fourCommandMock((options) => options.cwd);
+      const { pi, handlers } = buildPiWithHandlers();
+      createExtension(pi);
+      const ctx = createContext();
       for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-      for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
+      await flush();
+      for (const h of handlers.get("session_shutdown") ?? []) h({}, ctx);
+      execFileMock.mockClear();
+      for (const h of handlers.get("session_tree") ?? []) h({}, createContext());
       await flush();
       expect(execFileMock).not.toHaveBeenCalled();
     });
