@@ -27,6 +27,7 @@
     "test": "vitest run",
     "pack:dry-run": "pnpm pack --dry-run",
     "verify:pack": "node scripts/verify-pack.mjs",
+    "verify:install": "node scripts/verify-install.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "release:check": "pnpm check && pnpm run pack:dry-run"
   },
@@ -59,5 +60,9 @@
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": { "optional": true },
+    "@earendil-works/pi-tui": { "optional": true }
   }
 }
