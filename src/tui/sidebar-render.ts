@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { sliceByColumn, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type {
   AccessType,
   LiveActivitySnapshot,
@@ -8,6 +8,7 @@ import type {
   SessionMetrics,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
+  SidebarKeyValueContent,
   SidebarPanelId,
   SidebarSegmentSpan,
 } from "../shared/types.ts";
@@ -330,6 +331,42 @@ function collapsesWith(first: SidebarCatalogEntry, second: SidebarCatalogEntry):
   return key !== undefined && key === second.content.collapseUnavailableKey;
 }
 
+const BAR_FILLED = "█";
+const BAR_EMPTY = "░";
+const MIN_BAR_WIDTH = 4;
+
+/** Truncate to `max` columns with a one-column ellipsis; unlike truncateToWidth, it adds no reset codes. */
+function fitToWidth(text: string, max: number): string {
+  if (max <= 0) return "";
+  if (visibleWidth(text) <= max) return text;
+  return `${sliceByColumn(text, 0, max - 1, true)}…`;
+}
+
+/** Label left, value right, and an optional progress bar between them. */
+export function renderKeyValueRow(
+  content: SidebarKeyValueContent,
+  width: number,
+  palette: Palette,
+): string {
+  const safeWidth = Math.max(0, Math.trunc(width));
+  if (safeWidth === 0) return "";
+  // The label may keep up to a third of the row, so a long value never hides it.
+  const labelReserve = Math.min(
+    visibleWidth(content.label.text),
+    Math.max(1, Math.floor(safeWidth / 3)),
+  );
+  const value = fitToWidth(content.value.text, Math.max(1, safeWidth - labelReserve - 1));
+  const label = fitToWidth(content.label.text, Math.max(0, safeWidth - visibleWidth(value) - 1));
+  const gap = Math.max(0, safeWidth - visibleWidth(label) - visibleWidth(value));
+  const barWidth = gap - 2;
+  let middle = " ".repeat(gap);
+  if (content.progress !== undefined && barWidth >= MIN_BAR_WIDTH) {
+    const filled = Math.round(content.progress * barWidth);
+    middle = ` ${palette.paint(content.value.role as PaletteRole, BAR_FILLED.repeat(filled))}${palette.paint("dim", BAR_EMPTY.repeat(barWidth - filled))} `;
+  }
+  return `${palette.paint(content.label.role as PaletteRole, label)}${middle}${palette.paint(content.value.role as PaletteRole, value)}`;
+}
+
 function entryRows(
   entries: readonly SidebarCatalogEntry[],
   contentWidth: number,
@@ -344,7 +381,10 @@ function entryRows(
         for (const row of entry.content.rows) rows.push(paintSpans(row, palette));
         continue;
       }
-      if (entry.content.kind === "keyValue") continue;
+      if (entry.content.kind === "keyValue") {
+        rows.push(renderKeyValueRow(entry.content, contentWidth, palette));
+        continue;
+      }
       const next = entries[index + 1];
       const nextContent = next?.content;
       if (next && nextContent?.kind === "metric" && collapsesWith(entry, next)) {
