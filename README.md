@@ -242,6 +242,29 @@ At very narrow widths the sidebar collapses to a compact layout; at widths below
 
 Other extensions can publish structured panels through the public contribution channel `pi-status:sidebar-panels`. Panel IDs must be namespaced (`vendor:name`). Newly registered contributions are hidden by default — add them via the Sidebar tab to make them appear.
 
+Use `keyValues` for aligned label/value rows with optional progress bars:
+
+```ts
+registerSidebarPanel(pi, {
+  id: "vendor:build",
+  title: "Build",
+  rows: ["CPU 42%", "Jobs 3"], // fallback for older pi-status versions
+  keyValues: [
+    { label: "CPU", value: "42%", valueRole: "warning", progress: 0.42 },
+    { label: "Jobs", value: "3" },
+  ],
+});
+```
+
+| Field | Meaning |
+| --- | --- |
+| `label`, `value` | Required strings. The label is left-aligned and the value right-aligned at the sidebar width. |
+| `labelRole` | Optional colour role. Defaults to `muted`. |
+| `valueRole` | Optional colour role. Defaults to the panel `role`, else `primary`. |
+| `progress` | Optional number from `0` to `1`. A bar is drawn between label and value when at least 4 columns fit. Other values are dropped and the row is kept. |
+
+A panel accepts at most 24 `keyValues` entries, and each label and value is at most 160 visible characters. Keep `rows` as the fallback: older pi-status versions, and any empty or invalid `keyValues` list, render `rows`. Key/value rows are session-only, so moving or hiding one in the Sidebar tab does not survive a content update.
+
 ## Upgrade Notes For 0.3.x Users
 
 If you are upgrading from `0.3.x`, note these compatibility changes:
