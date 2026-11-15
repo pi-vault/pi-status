@@ -148,6 +148,8 @@ If another extension reports status text, it appears in the bottom-right zone.
 {
   "statusbarEnabled": true,
   "sidebarEnabled": true,
+  "sidebarMode": "manual",
+  "sidebarWidth": 44,
   "zones": {
     "topLeft": ["model-with-reasoning"],
     "topRight": [],
@@ -180,6 +182,11 @@ If another extension reports status text, it appears in the bottom-right zone.
 ```
 
 `statusbarEnabled` and `sidebarEnabled` both default to `true`. Only the literal JSON value `false` disables a surface; any other value (`true`, missing, `null`, numbers, strings, arrays, objects) leaves that surface enabled. Older or hand-edited files therefore load with both surfaces on. The next successful `/statusline` save rewrites both fields as canonical booleans.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `sidebarMode` | `"manual"` or `"auto"` | `"manual"` | Auto collapses and reopens the Sidebar with terminal width. Any other value loads as `"manual"`. Also a Settings row in `/statusline`. |
+| `sidebarWidth` | integer 28–72 | `44` | Starting Sidebar width for new sessions. Out-of-range integers are clamped; other values load as `44`. A confirmed resize saves it. |
 
 When the Statusbar is disabled, pi-status restores Pi's built-in footer through `ctx.ui.setFooter(undefined)` rather than installing a blank custom footer. When the Sidebar is disabled, the live right-edge Sidebar is hidden but `/statusline`, panel discovery, and the controller lifecycle remain available so you can re-enable it later.
 
@@ -237,6 +244,19 @@ Nine built-in panels ship in this default order:
 ### Width and resize
 
 At very narrow widths the sidebar collapses to a compact layout; at widths below 92 columns it hides entirely to preserve the main viewport. Press `Ctrl+Shift+R` to enter temporary Resize mode, then use arrow keys to adjust the width, `Enter` to accept, `Escape` to restore the previous width. You can also drag the divider with the mouse while in Resize mode.
+
+A confirmed resize that changed the width (`Enter`, or releasing the mouse after a drag) becomes `sidebarWidth` and is saved to `statusline.json` for new sessions. `Escape`, an unchanged `Enter`, and terminal resizes never change the saved width. You can also set `sidebarWidth` by hand in the file.
+
+### Auto mode
+
+Set **Sidebar mode** to **Auto** in `/statusline` → Settings (or `"sidebarMode": "auto"`) and the Sidebar follows the terminal width instead of the 92-column cut-off:
+
+- It collapses when the terminal is narrower than `80 + sidebarWidth` columns. With the default width of 44, that is below 124.
+- It reopens only at `80 + sidebarWidth + 8` columns (132 by default). The 8-column gap stops it flickering at the edge.
+- `Ctrl+Shift+R` is off in auto mode and shows a notice. Switch to Manual to resize.
+- Settings → **Sidebar** off hides the Sidebar in both modes, however wide the terminal.
+
+Manual mode keeps the behaviour described above.
 
 ### Contributing panels
 

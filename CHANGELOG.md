@@ -2,6 +2,17 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.9.0 - 2026-11-14
+
+### Added
+
+- Sidebar mode (`sidebarMode`, Settings row): `auto` collapses the Sidebar below `80 + width` columns and reopens it 8 columns higher. `manual` is the default and keeps the existing behaviour.
+- `sidebarWidth` (28–72, default 44): a confirmed resize is saved to `statusline.json` and used as the starting width in new sessions.
+
+### Changed
+
+- `Ctrl+Shift+R` shows a notice instead of resizing while Sidebar mode is `auto`.
+
 ## 0.8.0 - 2026-11-14
 
 ### Added
