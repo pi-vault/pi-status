@@ -7,11 +7,18 @@ import {
   type PiStatusConfig,
   type SidebarCatalogEntry,
   type SidebarEffectiveLayout,
+  type SidebarKeyValueContent,
 } from "../../src/shared/types.ts";
 import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import { createUntrustedWorkspacePulseSnapshot } from "../../src/core/workspace-pulse.ts";
-import { buildSidebarSnapshot, renderSidebarLines } from "../../src/tui/sidebar-render.ts";
+import {
+  buildSidebarSnapshot,
+  renderKeyValueRow,
+  renderSidebarLines,
+} from "../../src/tui/sidebar-render.ts";
+import { createPalette } from "../../src/tui/sidebar-palette.ts";
+import { createSidebarPanelRegistry } from "../../src/tui/sidebar-panels.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
 import { seedSidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
@@ -118,6 +125,10 @@ function noColorTheme(): StatusLineTheme {
     inverse: (text) => text,
     rainbow: (text) => text,
   };
+}
+
+function tagTheme(): StatusLineTheme {
+  return { ...noColorTheme(), fg: (color, text) => `<${color}>${text}</${color}>` };
 }
 
 function contributedPanel(): SidebarPanelData {
@@ -554,6 +565,44 @@ describe("renderSidebarLines panel composition", () => {
     expect(text).toContain("row one");
   });
 
+  it("renders a rows-only contributed panel exactly as 0.7.0", () => {
+    const input = makeInput();
+    const layout = [
+      ...input.config.sidebarPanelLayout.map((panel) => ({
+        ...panel,
+        visible: panel.id === "agent",
+      })),
+      { id: "ext:sample" as never, visible: true, segments: [] },
+    ];
+    const lines = render(
+      {
+        ...input,
+        config: { ...input.config, sidebarPanelLayout: layout },
+        sidebarPanels: [contributedPanel()],
+      },
+      120,
+      12,
+      { colorEnabled: true },
+      tagTheme(),
+    );
+    expect(lines).toMatchInlineSnapshot(`
+      [
+        "<dim>│</dim> <accent>╭─ ✦ </accent><accent>AGENT</accent> <accent>──────────────────────────────────────────────────────[0m",
+        "<dim>│</dim> <dim>│</dim> <primary>—</primary><dim> · </dim><dim>Off</dim>                                              [0m",
+        "<dim>│</dim> <dim>│</dim> <dim>—</dim>                                                                                  [0m",
+        "<dim>│</dim> <dim>╰─────────────────────────────────────────────────────────────────────────────────────────────────────[0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim> <primary>╭─ ✦ </primary><primary>SAMPLE</primary> <primary>────────────────────────────────────────────────[0m",
+        "<dim>│</dim> <dim>│</dim> <primary>row one</primary>                                                                    [0m",
+        "<dim>│</dim> <dim>│</dim> <accent>row two</accent>                                                                      [0m",
+        "<dim>│</dim> <dim>╰─────────────────────────────────────────────────────────────────────────────────────────────────────[0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim>                                                                                                            [0m",
+        "<dim>│</dim>                                                                                                            [0m",
+      ]
+    `);
+  });
+
   it("renders every identity class from its destination assignment", () => {
     const base = makeInput();
     const input = makeInput({
@@ -774,5 +823,112 @@ describe("renderSidebarLines semantic roles", () => {
     const layout = onlyPanel("agent")(seedSidebarEffectiveLayout(input.config, catalog));
     renderSidebarLines(snapshot, catalog, layout, { ...noTheme, fg }, 52, 12);
     expect(fg).toHaveBeenCalledWith("accent", "AGENT");
+  });
+});
+
+describe("renderKeyValueRow", () => {
+  const plain = createPalette(noColorTheme(), false);
+  const kv = (label: string, value: string, progress?: number): SidebarKeyValueContent => ({
+    kind: "keyValue",
+    label: { text: label, role: "muted" },
+    value: { text: value, role: "primary" },
+    ...(progress !== undefined ? { progress } : {}),
+  });
+
+  it("left-aligns the label and right-aligns the value at the width", () => {
+    expect(renderKeyValueRow(kv("CPU", "42%"), 20, plain)).toBe(`CPU${" ".repeat(14)}42%`);
+  });
+
+  it("draws a proportional bar with a space on each side when 4 or more columns fit", () => {
+    expect(renderKeyValueRow(kv("CPU", "50%", 0.5), 20, plain)).toBe(
+      `CPU ${"█".repeat(6)}${"░".repeat(6)} 50%`,
+    );
+  });
+
+  it("draws all-empty at 0 and all-filled at 1", () => {
+    expect(renderKeyValueRow(kv("CPU", "50%", 0), 20, plain)).toBe(`CPU ${"░".repeat(12)} 50%`);
+    expect(renderKeyValueRow(kv("CPU", "50%", 1), 20, plain)).toBe(`CPU ${"█".repeat(12)} 50%`);
+  });
+
+  it("omits the bar when fewer than 4 columns fit", () => {
+    const row = renderKeyValueRow(kv("CPU", "50%", 0.5), 11, plain);
+    expect(row).not.toMatch(/[█░]/);
+    expect(visibleWidth(row)).toBe(11);
+  });
+
+  it("never exceeds the width and keeps the value when the label is wide", () => {
+    const wide = kv("長いラベル名前テスト", "123456");
+    expect(renderKeyValueRow(wide, 12, plain)).toBe("長い… 123456");
+    expect(renderKeyValueRow(wide, 20, plain)).toBe("長いラベル名… 123456");
+    const narrow = renderKeyValueRow(wide, 8, plain);
+    expect(narrow).toBe("…  1234…");
+    expect(visibleWidth(narrow)).toBe(8);
+    expect(
+      visibleWidth(renderKeyValueRow(kv("😀😀😀😀", "値値値値値値"), 9, plain)),
+    ).toBeLessThanOrEqual(9);
+  });
+
+  it("truncates an overlong value with a one-column ellipsis and no escape codes", () => {
+    const row = renderKeyValueRow(kv("CPU", "x".repeat(40)), 20, plain);
+    expect(row).toBe(`CPU ${"x".repeat(15)}…`);
+    expect(row).not.toContain("...");
+    expect(row).not.toContain("\x1b");
+  });
+
+  it("returns an empty string at width 0", () => {
+    expect(renderKeyValueRow(kv("CPU", "1"), 0, plain)).toBe("");
+  });
+
+  it("paints label, bar and value in their roles", () => {
+    const tagged = { paint: (role: string, text: string) => `<${role}>${text}</${role}>` };
+    expect(renderKeyValueRow(kv("CPU", "50%", 0.5), 20, tagged as never)).toBe(
+      `<muted>CPU</muted> <primary>${"█".repeat(6)}</primary><dim>${"░".repeat(6)}</dim> <primary>50%</primary>`,
+    );
+  });
+});
+
+describe("contributed keyValues rendering", () => {
+  function kvInput(keyValues: unknown) {
+    const registry = createSidebarPanelRegistry();
+    registry.register({
+      id: "ext:kv",
+      title: "kv",
+      rows: ["fallback row"],
+      role: "primary",
+      keyValues,
+    } as never);
+    const panel = registry.get("ext:kv") as SidebarPanelData;
+    registry.dispose();
+    const input = makeInput();
+    const layout = [
+      ...input.config.sidebarPanelLayout.map((entry) => ({
+        ...entry,
+        visible: entry.id === "agent",
+      })),
+      { id: "ext:kv" as never, visible: true, segments: [] },
+    ];
+    return {
+      ...input,
+      config: { ...input.config, sidebarPanelLayout: layout },
+      sidebarPanels: [panel],
+    };
+  }
+
+  it("renders a registered keyValues panel inside its frame", () => {
+    const text = render(kvInput([{ label: "CPU", value: "42%", progress: 0.42 }]), 44, 24).join(
+      "\n",
+    );
+    expect(text).toContain("CPU");
+    expect(text).toContain("42%");
+    expect(text).toContain("█");
+    expect(text).not.toContain("fallback row");
+    expect(text).not.toContain("\x1b");
+  });
+
+  it("falls back to rows byte-identically when keyValues is malformed", () => {
+    const withBad = render(kvInput([{}]), 120, 24, { colorEnabled: true }, tagTheme());
+    const without = render(kvInput(undefined), 120, 24, { colorEnabled: true }, tagTheme());
+    expect(withBad).toEqual(without);
+    expect(withBad.join("\n")).toContain("fallback row");
   });
 });

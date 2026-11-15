@@ -2,6 +2,12 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.8.0 - 2026-11-14
+
+### Added
+
+- `keyValues` on contributed sidebar panels: aligned label/value rows with optional progress bars. `rows` stays required as the fallback, and the protocol version is unchanged.
+
 ## 0.7.0 - 2026-11-14
 
 ### Added

@@ -5,6 +5,7 @@ import {
   type SidebarCatalogEntry,
   type StatusLineSegmentId,
 } from "../../src/shared/types.ts";
+import { sidebarAnonymousContributionSegmentId } from "../../src/core/sidebar-layout.ts";
 import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
 import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
@@ -135,6 +136,8 @@ function byId(catalog: readonly SidebarCatalogEntry[]): Map<string, SidebarCatal
 function textOf(entry: SidebarCatalogEntry | undefined): string | undefined {
   if (!entry?.content) return undefined;
   if (entry.content.kind === "metric") return entry.content.value.map((s) => s.text).join("");
+  if (entry.content.kind === "keyValue")
+    return `${entry.content.label.text}=${entry.content.value.text}`;
   return entry.content.rows.map((row) => row.map((s) => s.text).join("")).join("\n");
 }
 
@@ -467,6 +470,78 @@ describe("sidebar catalog dynamic identities", () => {
     expect(failed?.content).toBeNull();
     expect(textOf(catalog.get("session:contribution:build%3Apanel:3:0"))).toBe("fine");
     expect(textOf(catalog.get("builtin:model"))).toBe("claude-sonnet");
+  });
+});
+
+describe("contributed keyValues", () => {
+  const kvEntries = (panel: SidebarPanelData) =>
+    buildSidebarSegmentCatalog(snapshot({ sidebarPanels: [panel] })).filter(
+      (entry) =>
+        entry.id.startsWith("session:contribution:") || entry.id.startsWith("contribution:"),
+    );
+
+  it("builds one keyValue entry per key/value instead of rows", () => {
+    const entries = kvEntries(
+      contributedPanel({
+        keyValues: [
+          { label: "A", value: "1" },
+          { label: "B", value: "2" },
+          { label: "C", value: "3" },
+        ],
+      }),
+    );
+    expect(entries.map((entry) => entry.id)).toEqual(
+      [0, 1, 2].map((i) => sidebarAnonymousContributionSegmentId("build:panel", 3, i)),
+    );
+    for (const entry of entries) {
+      expect(entry.persistence).toBe("session");
+      expect(entry.defaultPanelId).toBe("build:panel");
+      expect(entry.content?.kind).toBe("keyValue");
+    }
+  });
+
+  it("defaults label role to muted and value role to the panel role, else primary", () => {
+    const content = (panel: Partial<SidebarPanelData>, kv: object = {}) =>
+      kvEntries(contributedPanel({ keyValues: [{ label: "A", value: "1", ...kv }], ...panel }))[0]
+        ?.content;
+    expect(content({ role: "accent" })).toMatchObject({
+      label: { role: "muted" },
+      value: { role: "accent" },
+    });
+    expect(content({ role: undefined })).toMatchObject({ value: { role: "primary" } });
+    expect(content({ role: "accent" }, { labelRole: "dim", valueRole: "error" })).toMatchObject({
+      label: { role: "dim" },
+      value: { role: "error" },
+    });
+  });
+
+  it("carries progress through to the content", () => {
+    const entries = kvEntries(
+      contributedPanel({
+        keyValues: [
+          { label: "A", value: "1", progress: 0 },
+          { label: "B", value: "2", progress: 1 },
+          { label: "C", value: "3" },
+        ],
+      }),
+    );
+    expect(entries[0]?.content).toMatchObject({ progress: 0 });
+    expect(entries[1]?.content).toMatchObject({ progress: 1 });
+    expect(entries[2]?.content).not.toHaveProperty("progress");
+  });
+
+  it("renders keyValues when rows is empty", () => {
+    expect(
+      kvEntries(contributedPanel({ rows: [], keyValues: [{ label: "A", value: "1" }] })),
+    ).toHaveLength(1);
+  });
+
+  it("keeps row entries unchanged when keyValues is absent", () => {
+    const entries = kvEntries(contributedPanel());
+    expect(entries.map((entry) => [entry.id, entry.persistence])).toEqual([
+      ["contribution:build%3Apanel:row_one", "stable"],
+      ["session:contribution:build%3Apanel:3:1", "session"],
+    ]);
   });
 });
 

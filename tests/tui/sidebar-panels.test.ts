@@ -1404,3 +1404,134 @@ describe("contributed row identity and generation", () => {
     registry.dispose();
   });
 });
+
+describe("contributed keyValues", () => {
+  const registerWith = (
+    keyValues: unknown,
+    rows: SidebarPanelContribution["rows"] = ["fallback"],
+  ) => {
+    const registry = createSidebarPanelRegistry();
+    const accepted = registry.register({
+      id: "vendor:kv",
+      title: "KV",
+      rows,
+      keyValues,
+    } as never);
+    const panel = registry.get("vendor:kv");
+    registry.dispose();
+    return { accepted, panel };
+  };
+
+  it("keeps valid keyValues with sanitized text, roles and progress", () => {
+    const { panel } = registerWith([
+      { label: "CPU\x1b[31m", value: "42%", valueRole: "warning", progress: 0.42 },
+    ]);
+    expect(panel?.keyValues).toEqual([
+      { label: "CPU", value: "42%", valueRole: "warning", progress: 0.42 },
+    ]);
+  });
+
+  it("drops keyValues and keeps rows when the list is empty, not an array, or too long", () => {
+    const tooLong = Array.from({ length: SIDEBAR_PANEL_MAX_ROWS + 1 }, () => ({
+      label: "a",
+      value: "b",
+    }));
+    for (const bad of [[], "nope", tooLong]) {
+      const { accepted, panel } = registerWith(bad);
+      expect(accepted).toBe(true);
+      expect(panel?.keyValues).toBeUndefined();
+      expect(panel?.rows).toEqual([{ text: "fallback" }]);
+    }
+  });
+
+  it("drops keyValues when any entry is malformed", () => {
+    const good = { label: "A", value: "1" };
+    for (const bad of [
+      "x",
+      { label: "A" },
+      { label: 5, value: "1" },
+      { label: "a".repeat(SIDEBAR_PANEL_MAX_ROW_CHARS + 1), value: "1" },
+    ]) {
+      const { panel } = registerWith([good, bad]);
+      expect(panel?.keyValues).toBeUndefined();
+      expect(panel?.rows).toEqual([{ text: "fallback" }]);
+    }
+  });
+
+  it("skips entries that are empty after sanitizing", () => {
+    expect(
+      registerWith([
+        { label: "\x1b[0m", value: " " },
+        { label: "A", value: "1" },
+      ]).panel?.keyValues,
+    ).toEqual([{ label: "A", value: "1" }]);
+    expect(registerWith([{ label: "\x1b[0m", value: " " }]).panel?.keyValues).toBeUndefined();
+  });
+
+  it("drops an invalid role but keeps the entry", () => {
+    expect(
+      registerWith([{ label: "A", value: "1", labelRole: "nope", valueRole: 3 }]).panel?.keyValues,
+    ).toEqual([{ label: "A", value: "1" }]);
+  });
+
+  it("drops out-of-range or non-finite progress but keeps the entry", () => {
+    for (const bad of [-0.1, 1.1, Number.NaN, Number.POSITIVE_INFINITY, "0.5"]) {
+      expect(registerWith([{ label: "A", value: "1", progress: bad }]).panel?.keyValues).toEqual([
+        { label: "A", value: "1" },
+      ]);
+    }
+    for (const ok of [0, 1]) {
+      expect(registerWith([{ label: "A", value: "1", progress: ok }]).panel?.keyValues).toEqual([
+        { label: "A", value: "1", progress: ok },
+      ]);
+    }
+  });
+
+  it("bumps generation only when keyValues change", () => {
+    const registry = createSidebarPanelRegistry();
+    const panel = (value: string) =>
+      ({
+        id: "vendor:kv",
+        title: "KV",
+        rows: ["same"],
+        keyValues: [{ label: "A", value }],
+      }) as SidebarPanelContribution;
+    registry.register(panel("1"));
+    expect(registry.get("vendor:kv")?.generation).toBe(1);
+    registry.register(panel("2"));
+    expect(registry.get("vendor:kv")?.generation).toBe(2);
+    registry.register(panel("2"));
+    expect(registry.get("vendor:kv")?.generation).toBe(2);
+    registry.register({ id: "vendor:kv", title: "KV", rows: ["same"] });
+    expect(registry.get("vendor:kv")?.generation).toBe(3);
+    registry.dispose();
+  });
+
+  it("publishes keyValues through registerSidebarPanel", () => {
+    const listeners = new Set<(data: unknown) => void>();
+    const events = {
+      on: (_channel: string, handler: (data: unknown) => void) => {
+        listeners.add(handler);
+        return () => listeners.delete(handler);
+      },
+      emit: (_channel: string, data: unknown) => {
+        for (const listener of [...listeners]) listener(data);
+      },
+    };
+    const publisher = registerSidebarPanel(
+      { events },
+      {
+        id: "vendor:kv",
+        title: "KV",
+        rows: ["CPU 42%"],
+        keyValues: [{ label: "CPU", value: "42%", progress: 0.42 }],
+      },
+    );
+    const registry = createSidebarPanelRegistry({ events });
+    expect(registry.get("vendor:kv")?.keyValues).toEqual([
+      { label: "CPU", value: "42%", progress: 0.42 },
+    ]);
+    publisher.dispose();
+    registry.dispose();
+  });
+});
