@@ -15,7 +15,11 @@ import { createNotificationsWiring } from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { reconstructTodos, parseTodoDetails } from "./core/todos.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
-import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
+import {
+  createUntrustedWorkspacePulseSnapshot,
+  createWorkspacePulseRuntime,
+  type WorkspacePulseRuntime,
+} from "./core/workspace-pulse.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
@@ -242,7 +246,11 @@ export default function createExtension(pi: ExtensionAPI): void {
       usageState: usageRuntime.getState(),
       extensionStatuses: footerProviderState.extensionStatuses,
       activity: activityRuntime.snapshot(),
-      ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
+      ...(workspacePulseRuntime
+        ? { workspacePulse: workspacePulseRuntime.snapshot() }
+        : !projectTrusted
+          ? { workspacePulse: createUntrustedWorkspacePulseSnapshot(activeCtx.cwd) }
+          : {}),
     });
   }
 
@@ -287,6 +295,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   const usageRuntime = createUsageRuntime(pi);
   const activityRuntime = createActivityRuntime();
   let workspacePulseRuntime: WorkspacePulseRuntime | undefined;
+  let projectTrusted = false;
   const footerProviderState = {
     gitBranch: null as string | null,
     extensionStatuses: new Map<string, string>(),
@@ -373,7 +382,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   function installFooter(ctx: ExtensionContext, config: PiStatusConfig): void {
-    if (!workspacePulseRuntime) {
+    if (!workspacePulseRuntime && projectTrusted) {
       workspacePulseRuntime = createWorkspacePulseRuntime({ directory: ctx.cwd });
     }
 
@@ -487,6 +496,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     clearRenderSubscriptions();
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
+    projectTrusted = safeRead(() => ctx.isProjectTrusted()) === true;
     resetFooterProviderState();
     activityRuntime.reset();
     usageRuntime.requestCurrent();

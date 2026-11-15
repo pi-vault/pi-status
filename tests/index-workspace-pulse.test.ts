@@ -15,6 +15,7 @@ import {
   createContext,
   buildPiWithHandlers,
   getRegisteredCommand,
+  renderWithFactory,
 } from "./helpers.ts";
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -257,6 +258,71 @@ describe("workspace pulse wiring", () => {
     await new Promise((r) => setTimeout(r, 260));
     expect(execFileMock.mock.calls.length).toBe(callsAfterShutdown);
   });
+
+  describe("untrusted projects", () => {
+    const flush = async () => {
+      for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    };
+
+    function untrustedCtx(isProjectTrusted: () => boolean, footerSpy = buildSetFooterSpy()) {
+      return createContext({
+        isProjectTrusted,
+        ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+      });
+    }
+
+    it("never runs git and renders the placeholder when untrusted with workspace-pulse in a zone", async () => {
+      withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+      const footerSpy = buildSetFooterSpy();
+      const { pi, handlers } = buildPiWithHandlers();
+      createExtension(pi);
+      const ctx = untrustedCtx(() => false, footerSpy);
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+      await flush();
+      expect(execFileMock).not.toHaveBeenCalled();
+      expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("Git · untrusted");
+    });
+
+    it("treats a throwing isProjectTrusted as untrusted", async () => {
+      withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+      const { pi, handlers } = buildPiWithHandlers();
+      createExtension(pi);
+      const ctx = untrustedCtx(() => {
+        throw new Error("x");
+      });
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+      await flush();
+      expect(execFileMock).not.toHaveBeenCalled();
+    });
+
+    it("does not create a runtime on session_tree in an untrusted session", async () => {
+      withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+      const { pi, handlers } = buildPiWithHandlers();
+      createExtension(pi);
+      const ctx = untrustedCtx(() => false);
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+      for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
+      await flush();
+      expect(execFileMock).not.toHaveBeenCalled();
+    });
+
+    it("runs git when a later session_start is trusted", async () => {
+      withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+      fourCommandMock((options) => options.cwd);
+      const { pi, handlers } = buildPiWithHandlers();
+      createExtension(pi);
+      for (const h of handlers.get("session_start") ?? [])
+        h(
+          {},
+          untrustedCtx(() => false),
+        );
+      await flush();
+      expect(execFileMock).not.toHaveBeenCalled();
+      for (const h of handlers.get("session_start") ?? []) h({}, createContext());
+      await flush();
+      expect(execFileMock).toHaveBeenCalledTimes(4);
+    });
+  });
 });
 
 describe("workspace pulse sidebar demand", () => {
@@ -327,6 +393,30 @@ describe("workspace pulse sidebar demand", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     expect(execFileMock).toHaveBeenCalled();
+  });
+
+  it("does not start Workspace Pulse for a visible sidebar workspace panel in an untrusted project", async () => {
+    writeSidebarLayout(true);
+    fourCommandMock(() => "/repo");
+    const { pi, handlers } = buildPiWithHandlers();
+    const customMock = vi.fn(<T>(factory: (...args: unknown[]) => T) => {
+      factory(
+        { terminal: { columns: 120, rows: 30 }, requestRender: () => {} },
+        null,
+        {},
+        () => {},
+      );
+      return Promise.resolve(null) as Promise<unknown>;
+    });
+    createExtension(pi);
+    const ctx = createContext({
+      isProjectTrusted: () => false,
+      ui: { ...createContext().ui, custom: customMock as never },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 
   it("does not start Workspace Pulse when the visible sidebar has no pulse-demanding assignment", () => {
