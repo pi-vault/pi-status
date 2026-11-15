@@ -198,9 +198,11 @@ interface SidebarPanelContribution {
   - Tests cover valid key/values, each fallback case, progress clamping and dropping, narrow widths, and `NO_COLOR`.
   - A rows-only contributor renders byte-identical to 0.7.0.
 
-## Phase 4 — Auto sidebar, saved width, toggle key (release 0.9.0)
+## Phase 4 — Auto sidebar and saved width (release 0.9.0)
 
-**Usable result:** the sidebar can collapse and reopen with terminal width, remembers its width across sessions, and can be toggled from the keyboard.
+**Usable result:** the sidebar can collapse and reopen with terminal width, and remembers its width across sessions.
+
+> Revised 2026-11-14: the `toggleShortcut` key was cut. `/statusline` → Settings → Sidebar already shows and hides the sidebar and persists the choice. A toggle key can return as a separate change if users ask for it.
 
 New config keys in `statusline.json`. All are optional and normalized like existing keys:
 
@@ -208,7 +210,6 @@ New config keys in `statusline.json`. All are optional and normalized like exist
 |---|---|---|---|
 | `sidebarMode` | `"manual" \| "auto"` | `"manual"` | Auto collapses/reopens with width; manual keeps today's behaviour. |
 | `sidebarWidth` | integer 28–72 | 44 | Starting width for new sessions. |
-| `toggleShortcut` | key id string | `""` (none) | Shows/hides the sidebar. |
 
 Behaviour:
 
@@ -216,23 +217,19 @@ Behaviour:
   - The sidebar collapses when `terminalWidth < 80 + sidebarWidth`, and reopens only when `terminalWidth >= 80 + sidebarWidth + 8`. The 8-column gap prevents flicker.
   - Manual resize (`Ctrl+Shift+R`) is disabled in auto mode, with an info notice.
 - **Manual mode:** unchanged, including the existing below-92-columns hide.
-- **Explicit hide wins over auto:** a sidebar hidden with the toggle key stays hidden when the terminal grows. The toggle state is session-scoped.
+- **Explicit off wins over auto:** with Settings → Sidebar off, the sidebar stays hidden however wide the terminal grows.
 - **Saving the width:**
   - A confirmed resize (Enter or mouse release) persists `sidebarWidth` to `statusline.json`.
   - Escape restores the previous width and does not persist.
   - Terminal resizes never change the saved width.
-- **Toggle key:**
-  - `toggleShortcut` is registered once at extension load. Pi cannot unregister shortcuts, so changes need `/reload`.
-  - An empty value, or one equal to `ctrl+shift+r`, is ignored with a warning.
-  - When the sidebar cannot display (RPC/print, or fullscreen before Phase 5 ships), the key is a no-op that shows a one-line info notice. It does not flip the hidden state, so nothing surprising happens later. *(Builder's call.)*
-- Settings tab gains "Sidebar mode" (manual/auto). `sidebarWidth` and `toggleShortcut` are file-only, documented in the README.
+- Settings tab gains "Sidebar mode" (manual/auto). `sidebarWidth` is file-only (and set by a confirmed resize), documented in the README.
 - Implementation home:
   - `src/tui/split-pane.ts`: width reconcile and effective width.
   - `src/core/config.ts`: normalization.
   - `src/tui/dashboard-state.ts`: Settings row.
   - `src/index.ts`: shortcut registration and persistence on resize confirm.
 - **Done when:**
-  - Tests cover the auto collapse/reopen thresholds including the gap, persist-on-confirm, no-persist-on-escape, and toggle-beats-auto.
+  - Tests cover the auto collapse/reopen thresholds including the gap, persist-on-confirm, no-persist-on-escape, and Sidebar-off-beats-auto.
   - Config normalization tests cover each key's invalid values.
   - A manual smoke test passes in a resizable terminal.
 
@@ -247,7 +244,7 @@ Behaviour:
   1. Capture the current layout root.
   2. Install `new HStack([main (grow 1, minSize 64), sidebar (basis = width, grow 0, min 28, max 72, visible: per mode/hide state)])` via `tui.setLayoutRoot()`.
   3. On hide, dispose, shutdown or error, restore the original root, but only if the installed root is still ours (owner check, as atelier does).
-  4. If Pi or another extension replaces the root later, do not fight it. The sidebar stays absent until one of our own lifecycle points re-wraps: `session_start`, a sidebar show or toggle, or a `/statusline` save. Re-wrapping then wraps whatever root is current. No polling and no per-render checks. *(Builder's call.)*
+  4. If Pi or another extension replaces the root later, do not fight it. The sidebar stays absent until one of our own lifecycle points re-wraps: `session_start`, a sidebar show, or a `/statusline` save. Re-wrapping then wraps whatever root is current. No polling and no per-render checks. *(Builder's call.)*
 - Sidebar component: the existing sidebar renderer wrapped as a `Component` that renders at the width the `HStack` gives it.
 - Resize in fullscreen:
   - Keyboard resize works as in regular mode.
@@ -273,8 +270,7 @@ Behaviour:
 These were settled by the design author, not the user, and are marked *(Builder's call.)* above:
 
 - Phase 2 install flags mirror Pi's own (`--legacy-peer-deps`), and the loader comes from the dev dependency.
-- Phase 4 toggle key is a no-op with a notice when the sidebar cannot display.
-- Phase 5 re-wraps a replaced fullscreen root only at `session_start`, show/toggle, or `/statusline` save.
+- Phase 5 re-wraps a replaced fullscreen root only at `session_start`, a sidebar show, or `/statusline` save.
 
 ## Left to the builder
 

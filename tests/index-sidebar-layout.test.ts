@@ -34,6 +34,8 @@ function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
@@ -52,6 +54,8 @@ function configWithPanelsVisible(panels: SidebarPanelId[]): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",

@@ -18,7 +18,7 @@
 | 1 — Trusted-only Git                      | 0.6.1   | `2026-11-14-atelier-parity-phase-1-trust.md`              |
 | 2 — Release verification                  | 0.7.0   | `2026-11-14-atelier-parity-phase-2-release-checks.md`     |
 | 3 — Richer panel API                      | 0.8.0   | `2026-11-14-atelier-parity-phase-3-panel-key-values.md`   |
-| 4 — Auto sidebar, saved width, toggle key | 0.9.0   | `2026-11-14-atelier-parity-phase-4-auto-sidebar.md`       |
+| 4 — Auto sidebar and saved width          | 0.9.0   | `2026-11-14-atelier-parity-phase-4-auto-sidebar.md`       |
 | 5 — Fullscreen sidebar                    | 0.10.0  | `2026-11-14-atelier-parity-phase-5-fullscreen-sidebar.md` |
 
 ## Global Constraints
@@ -30,7 +30,7 @@
 - `engines.node` stays `">=24.15.0"`.
 - Never run any Git command in a project Pi has not trusted.
 - Never retain or display changed-file paths. `statusline.json` stays global. No new dashboard tabs.
-- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"`, `toggleShortcut` defaults to `""`.
+- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"`, `sidebarWidth` defaults to `44`.
 - Existing `pi-status:sidebar-panels` contributors keep working; the protocol version is unchanged.
 - Pi's `render` and fullscreen layout root are restored after `session_shutdown`, `/reload`, or a render error.
 - Module layout: `src/core`, `src/tui`, `src/shared`; test layout: `tests/core`, `tests/tui`, `tests/index-*.test.ts`. Match the existing 2-space Biome style.
@@ -874,6 +874,8 @@ Open the PR. After merge: `git tag v0.8.0 && git push origin v0.8.0`.
 ---
 
 ## Phase 4 — Auto sidebar, saved width, toggle key (release 0.9.0)
+
+> Superseded 2026-11-14 after checking against `v0.8.0`: execute `2026-11-14-atelier-parity-phase-4-auto-sidebar.md` instead. That file's "Revision notes" list what changed, including cutting `toggleShortcut`. The tasks below are kept for history.
 
 **Goal:** the sidebar can collapse and reopen with terminal width (opt-in), remembers its width across sessions, and can be toggled from a configurable key.
 

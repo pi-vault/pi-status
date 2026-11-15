@@ -81,6 +81,7 @@ export type DashboardSelectableRow =
   | { type: "sidebar_default" }
   | { type: "statusbar_enabled" }
   | { type: "sidebar_enabled" }
+  | { type: "sidebar_mode" }
   | { type: "color_preset" }
   | { type: "color_role"; role: PaletteRole }
   | { type: "notifications" }
@@ -232,6 +233,7 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
     left.extensionStatusZone === right.extensionStatusZone &&
     left.statusbarEnabled === right.statusbarEnabled &&
     left.sidebarEnabled === right.sidebarEnabled &&
+    left.sidebarMode === right.sidebarMode &&
     sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications &&
     left.colors.preset === right.colors.preset &&
@@ -420,6 +422,7 @@ export function selectableRows(
     return [
       { type: "statusbar_enabled" },
       { type: "sidebar_enabled" },
+      { type: "sidebar_mode" },
       { type: "color_preset" },
       ...(state.draft.colors.preset === "custom"
         ? PALETTE_ROLES_CONST.map((role) => ({ type: "color_role" as const, role }))
@@ -748,6 +751,9 @@ export function reduceDashboardState(
         ];
       state.draft.zones = visiblePreset(name, state.visibleSegmentIds);
       state.preset = name;
+    } else if (row.type === "sidebar_mode") {
+      state.draft.sidebarMode = state.draft.sidebarMode === "auto" ? "manual" : "auto";
+      return { state: clampSelection(state) };
     } else if (row.type === "color_preset") {
       const index = COLOR_PRESET_IDS.indexOf(state.draft.colors.preset);
       const preset =
@@ -816,6 +822,8 @@ export function reduceDashboardState(
     return { state, effect: { type: "edit_color", role: row.role } };
   } else if (row.type === "sidebar_enabled") {
     state.draft.sidebarEnabled = !state.draft.sidebarEnabled;
+  } else if (row.type === "sidebar_mode") {
+    state.draft.sidebarMode = state.draft.sidebarMode === "auto" ? "manual" : "auto";
   } else if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
   } else if (row.type === "sidebar_panel_visibility") {

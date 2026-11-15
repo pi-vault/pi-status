@@ -35,6 +35,8 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: zones(),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
@@ -181,6 +183,17 @@ describe("dashboard render", () => {
 
     expect(output).toContain("No matching statuses.");
     expect(output).toContain("Save changes");
+  });
+
+  it.each([
+    ["manual", "Manual"],
+    ["auto", "Auto"],
+  ] as const)("renders the Sidebar mode row as %s", (mode, label) => {
+    const state = initDashboardState(config({ sidebarMode: mode }), [], true);
+    state.activeTab = "settings";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Sidebar mode");
+    expect(output).toContain(label);
   });
 
   it("renders the Settings tab without the legacy tool names row", () => {

@@ -231,9 +231,13 @@ export interface StatusLineZones {
   bottomRight: StatusLineSegmentId[];
 }
 
+export type SidebarMode = "manual" | "auto";
+
 export type PiStatusConfig = {
   statusbarEnabled: boolean;
   sidebarEnabled: boolean;
+  sidebarMode: SidebarMode;
+  sidebarWidth: number;
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
   extensionStatusZone: StatusLineZone;

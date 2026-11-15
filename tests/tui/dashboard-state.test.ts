@@ -40,6 +40,8 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: zones(),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
@@ -277,6 +279,7 @@ describe("dashboard Statusbar tab initialization", () => {
     const expectedRows = [
       { type: "statusbar_enabled" },
       { type: "sidebar_enabled" },
+      { type: "sidebar_mode" },
       { type: "color_preset" },
       { type: "notifications" },
       { type: "save" },
@@ -315,7 +318,9 @@ describe("dashboard Statusbar tab initialization", () => {
       [],
     );
     state.activeTab = "settings";
-    state.navigation.settings.selectedIndex = 2;
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === "color_preset",
+    );
 
     // 6 forward adjusts cycle pi→atelier→catppuccin-mocha→…→tokyonight-day→custom.
     for (let index = 0; index < 6; index += 1) {
@@ -340,7 +345,9 @@ describe("dashboard Statusbar tab initialization", () => {
   it("keeps first-use initialization dirty after cycling away from Custom", () => {
     let state = initDashboardState(config(), []);
     state.activeTab = "settings";
-    state.navigation.settings.selectedIndex = 2;
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === "color_preset",
+    );
 
     state = reduceDashboardState(state, { type: "adjust", delta: -1 }).state;
     expect(state.draft.colors.preset).toBe("custom");
@@ -648,6 +655,36 @@ describe("dashboard transitions", () => {
     expect(state.draft[field]).toBe(false);
     expect(state.baseline[field]).toBe(true);
     expect(isDashboardDirty(state)).toBe(true);
+  });
+
+  describe("sidebar_mode row", () => {
+    const onModeRow = () => {
+      const state = initDashboardState(config(), [], true);
+      state.activeTab = "settings";
+      state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+        (row) => row.type === "sidebar_mode",
+      );
+      return state;
+    };
+
+    it("activating flips manual and auto in the draft only", () => {
+      let state = reduceDashboardState(onModeRow(), { type: "activate" }).state;
+      expect(state.draft.sidebarMode).toBe("auto");
+      expect(state.baseline.sidebarMode).toBe("manual");
+      state = reduceDashboardState(state, { type: "activate" }).state;
+      expect(state.draft.sidebarMode).toBe("manual");
+    });
+
+    it.each([-1, 1] as const)("adjust %i flips the mode", (delta) => {
+      const state = reduceDashboardState(onModeRow(), { type: "adjust", delta }).state;
+      expect(state.draft.sidebarMode).toBe("auto");
+    });
+
+    it("makes the draft dirty on its own", () => {
+      const state = reduceDashboardState(onModeRow(), { type: "activate" }).state;
+      expect(isDashboardDirty(state)).toBe(true);
+      expect(configsEqual(state.baseline, state.draft)).toBe(false);
+    });
   });
 
   it("keeps the same segment selected after moving and reordering it", () => {

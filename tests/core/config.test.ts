@@ -53,6 +53,8 @@ const expectedDefault = expectedDefaultLayout;
 const config: PiStatusConfig = {
   statusbarEnabled: true,
   sidebarEnabled: true,
+  sidebarMode: "manual",
+  sidebarWidth: 44,
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
   extensionStatusZone: "bottomRight",
@@ -755,6 +757,8 @@ describe("config — direct extension file", () => {
     expect(loadConfig({ agentDir, store })).toEqual({
       statusbarEnabled: true,
       sidebarEnabled: true,
+      sidebarMode: "manual",
+      sidebarWidth: 44,
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
@@ -792,6 +796,8 @@ describe("config — direct extension file", () => {
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
         statusbarEnabled: true,
         sidebarEnabled: true,
+        sidebarMode: "manual",
+        sidebarWidth: 44,
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         extensionStatusZone: "bottomRight",
@@ -935,6 +941,8 @@ describe("config — filesystem", () => {
     expect(loadConfig()).toEqual({
       statusbarEnabled: true,
       sidebarEnabled: true,
+      sidebarMode: "manual",
+      sidebarWidth: 44,
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
@@ -1048,7 +1056,9 @@ describe("config — completion notifications", () => {
         "extensionStatusZone",
         "sidebarEnabled",
         "sidebarHiddenSegments",
+        "sidebarMode",
         "sidebarPanelLayout",
+        "sidebarWidth",
         "statusbarEnabled",
         "zones",
       ].sort(),
@@ -1150,7 +1160,7 @@ describe("config — surface visibility", () => {
 });
 
 describe("config — 0.5.x compatibility", () => {
-  it("round-trips a 0.5.x statusline.json without changing it", () => {
+  it("round-trips a 0.5.x statusline.json, adding only the default sidebar keys", () => {
     const store = new MemoryConfigStore();
     const path = getConfigPath("/agent");
     const legacy = readFileSync(
@@ -1161,6 +1171,57 @@ describe("config — 0.5.x compatibility", () => {
 
     saveConfig(loadConfig({ agentDir: "/agent", store }), { agentDir: "/agent", store });
 
-    expect(store.read(path)).toBe(legacy);
+    expect(JSON.parse(store.read(path) as string)).toEqual({
+      ...JSON.parse(legacy),
+      sidebarMode: "manual",
+      sidebarWidth: 44,
+    });
+  });
+});
+
+describe("config — sidebar mode and width", () => {
+  const load = (input?: Record<string, unknown>) => {
+    const store = new MemoryConfigStore();
+    if (input) store.seed(getConfigPath("/agent"), JSON.stringify(input));
+    return loadConfig({ agentDir: "/agent", store });
+  };
+
+  it("defaults sidebarMode and sidebarWidth", () => {
+    expect(load()).toMatchObject({ sidebarMode: "manual", sidebarWidth: 44 });
+    expect(load({ zones: DEFAULT_ZONES })).toMatchObject({
+      sidebarMode: "manual",
+      sidebarWidth: 44,
+    });
+  });
+
+  it.each([
+    ["auto", "auto"],
+    ["manual", "manual"],
+    ["AUTO", "manual"],
+    [1, "manual"],
+    [null, "manual"],
+  ])("normalizes sidebarMode %j", (value, expected) => {
+    expect(load({ sidebarMode: value }).sidebarMode).toBe(expected);
+  });
+
+  it.each([
+    [50, 50],
+    [28, 28],
+    [72, 72],
+    [10, 28],
+    [500, 72],
+    [50.5, 44],
+    ["50", 44],
+    [true, 44],
+    [null, 44],
+  ])("normalizes sidebarWidth %j", (value, expected) => {
+    expect(load({ sidebarWidth: value }).sidebarWidth).toBe(expected);
+  });
+
+  it("persists both keys through saveConfig", () => {
+    const store = new MemoryConfigStore();
+    const next = { ...load(), sidebarMode: "auto" as const, sidebarWidth: 50 };
+    saveConfig(next, { agentDir: "/agent", store });
+    expect(loadConfig({ agentDir: "/agent", store })).toEqual(next);
   });
 });

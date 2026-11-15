@@ -150,6 +150,13 @@ export default function createExtension(pi: ExtensionAPI): void {
     handler: (ctx) => {
       if (ctx.mode !== "tui") return;
       if (ctx.sessionManager !== activeTuiSessionManager) return;
+      if (runtimeState.snapshot().config.sidebarMode === "auto") {
+        ctx.ui.notify(
+          "Sidebar resize is off in auto mode. Set Sidebar mode to Manual in /statusline Settings.",
+          "info",
+        );
+        return;
+      }
       const controller = activeSidebarController;
       if (!controller?.isEffectivelyVisible()) {
         ctx.ui.notify("pi-status sidebar is not visible", "warning");
@@ -187,6 +194,22 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });
+  }
+
+  function persistSidebarWidth(ctx: ExtensionContext, width: number): void {
+    if (ctx.sessionManager !== activeTuiSessionManager) return;
+    const current = runtimeState.snapshot().config;
+    if (width === current.sidebarWidth) return;
+    try {
+      saveConfig({ ...loadConfig(), sidebarWidth: width });
+      runtimeState.update({
+        type: "config_reload",
+        config: { ...current, sidebarWidth: width },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify(`Could not save sidebar width: ${message}`, "warning");
+    }
   }
 
   let dashboardOpen = false;
@@ -349,6 +372,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   ): void {
     if (ctx.mode !== "tui") return;
 
+    activeSidebarController?.setMode(config.sidebarMode);
     activeSidebarController?.setShown(config.sidebarEnabled);
     if (updateFooter) installFooter(ctx, config);
     if (!config.statusbarEnabled) setSidebarRenderSubscriptions();
@@ -525,6 +549,9 @@ export default function createExtension(pi: ExtensionAPI): void {
           ctx,
           getView: () => captureSidebarView(ctx),
           getColors: () => runtimeState.snapshot().config.colors,
+          sidebarMode: runtimeState.snapshot().config.sidebarMode,
+          sidebarWidth: runtimeState.snapshot().config.sidebarWidth,
+          onResizeCommit: (width) => persistSidebarWidth(ctx, width),
           onWarning: (message) => ctx.ui.notify(message, "warning"),
           onError: (error) =>
             ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning"),

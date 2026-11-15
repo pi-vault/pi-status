@@ -32,6 +32,8 @@ function footerConfig(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",

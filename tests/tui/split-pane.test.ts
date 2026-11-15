@@ -2,10 +2,13 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
+  AUTO_MAIN_WIDTH,
+  AUTO_REOPEN_MARGIN,
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
   MIN_MAIN_WIDTH,
   MIN_SIDEBAR_WIDTH,
+  autoSidebarVisible,
   createSplitPaneController,
   parseSgrMouseEvent,
 } from "../../src/tui/split-pane.ts";
@@ -659,5 +662,205 @@ describe("temporary Resize mode", () => {
     h.tui.render(91);
     expect(h.split.isResizing()).toBe(false);
     expect(h.write).toHaveBeenLastCalledWith("[?1006l[?1002l");
+  });
+});
+
+const setColumns = (h: { tui: TUI }, columns: number) => {
+  (h.tui.terminal as { columns: number }).columns = columns;
+};
+
+describe("split pane auto mode", () => {
+  it("exports the auto thresholds", () => {
+    expect([AUTO_MAIN_WIDTH, AUTO_REOPEN_MARGIN]).toEqual([80, 8]);
+  });
+
+  it.each([
+    [124, true, true],
+    [123, true, false],
+    [131, false, false],
+    [132, false, true],
+  ])("autoSidebarVisible(%i, 44, was=%j) → %j", (width, was, expected) => {
+    expect(autoSidebarVisible(width, 44, was)).toBe(expected);
+  });
+
+  function autoHarness(columns: number) {
+    const h = harness(columns);
+    const split = createSplitPaneController({ mode: "auto" });
+    split.attach(h.tui);
+    split.show();
+    const baseAt = (width: number) => {
+      setColumns(h, width);
+      h.tui.render(width);
+      return h.baseRender.mock.lastCall?.[0];
+    };
+    return { ...h, split, baseAt };
+  }
+
+  it("collapses and reopens with the hysteresis gap", () => {
+    const h = autoHarness(124);
+    expect(h.baseAt(124)).toBe(80);
+    expect(h.baseAt(123)).toBe(123);
+    expect(h.baseAt(131)).toBe(131);
+    expect(h.baseAt(132)).toBe(88);
+  });
+
+  it("keeps the manual 92-column threshold by default", () => {
+    const h = harness(92);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    split.show();
+    h.tui.render(92);
+    expect(h.baseRender).toHaveBeenLastCalledWith(64);
+    setColumns(h, 91);
+    h.tui.render(91);
+    expect(h.baseRender).toHaveBeenLastCalledWith(91);
+  });
+
+  it("stays hidden after hide even when the terminal grows", () => {
+    const h = autoHarness(150);
+    h.split.hide();
+    expect(h.baseAt(200)).toBe(200);
+  });
+
+  it("resets the hysteresis state on a mode switch and on show", () => {
+    const h = autoHarness(124);
+    h.baseAt(123);
+    expect(h.baseAt(125)).toBe(125);
+    h.split.setMode("manual");
+    h.split.setMode("auto");
+    expect(h.baseAt(125)).toBe(81);
+    h.baseAt(123);
+    h.split.hide();
+    h.split.show();
+    expect(h.baseAt(125)).toBe(81);
+  });
+
+  it("setMode with the current mode is a no-op", () => {
+    const h = autoHarness(124);
+    h.baseAt(123);
+    h.split.setMode("auto");
+    expect(h.baseAt(125)).toBe(125);
+    expect(h.split.getMode()).toBe("auto");
+  });
+
+  it("beginResize refuses in auto mode with one warning", () => {
+    const h = harness(150);
+    const onWarning = vi.fn();
+    const subscribeInput = vi.fn(() => () => undefined);
+    const split = createSplitPaneController({ mode: "auto", onWarning, subscribeInput });
+    split.attach(h.tui);
+    split.show();
+    expect(split.beginResize()).toBe(false);
+    expect(subscribeInput).not.toHaveBeenCalled();
+    expect(onWarning).toHaveBeenCalledOnce();
+  });
+
+  it("setMode cancels an active resize and restores the width", () => {
+    const h = resizeHarness(150);
+    h.split.beginResize();
+    h.send("\x1b[D");
+    expect(h.split.getSidebarWidth()).toBe(45);
+    h.split.setMode("auto");
+    expect(h.split.isResizing()).toBe(false);
+    expect(h.split.getSidebarWidth()).toBe(44);
+  });
+});
+
+describe("split pane resize commit", () => {
+  function commitHarness(columns = 120) {
+    const h = harness(columns);
+    let input: ((data: string) => { consume?: boolean; data?: string } | undefined) | undefined;
+    const onResizeCommit = vi.fn();
+    const split = createSplitPaneController({
+      subscribeInput(handler) {
+        input = handler;
+        return () => undefined;
+      },
+      onResizeCommit,
+    });
+    split.attach(h.tui);
+    split.show();
+    return { ...h, split, onResizeCommit, send: (data: string) => input?.(data) };
+  }
+
+  it("fires with the new width on Enter after a change", () => {
+    const h = commitHarness();
+    h.split.beginResize();
+    for (let i = 0; i < 3; i += 1) h.send("\x1b[D");
+    h.send("\r");
+    expect(h.onResizeCommit).toHaveBeenCalledExactlyOnceWith(47);
+  });
+
+  it("fires on mouse release after a drag that changed the width", () => {
+    const h = commitHarness();
+    h.split.beginResize();
+    h.send(press(120 - 44 + 1));
+    h.send(motion(70));
+    h.send(release(70));
+    expect(h.onResizeCommit).toHaveBeenCalledExactlyOnceWith(51);
+  });
+
+  it("does not fire when Enter confirms an unchanged width", () => {
+    const h = commitHarness();
+    h.split.beginResize();
+    h.send("\r");
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it("does not fire when Enter confirms a width the terminal clamped at start", () => {
+    const h = commitHarness(100);
+    h.split.setSidebarWidth(60);
+    h.split.beginResize();
+    expect(h.split.getSidebarWidth()).toBe(36);
+    h.send("\r");
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on Escape, hide, dispose, or a release without a drag", () => {
+    const h = commitHarness();
+    h.split.beginResize();
+    h.send("\x1b[D");
+    h.send("\x1b");
+    h.split.beginResize();
+    h.send("\x1b[D");
+    h.send(release(70));
+    h.split.hide();
+    h.split.show();
+    h.split.beginResize();
+    h.send("\x1b[D");
+    h.split.dispose();
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it("does not fire when a terminal shrink only clamps an active resize", () => {
+    const h = commitHarness(140);
+    h.split.beginResize();
+    setColumns(h, 100);
+    h.tui.render(100);
+    expect(h.split.isResizing()).toBe(true);
+    expect(h.split.getSidebarWidth()).toBe(36);
+    h.send("\r");
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it("commits the width the user chose, not the width a later shrink clamped it to", () => {
+    const h = commitHarness(140);
+    h.split.beginResize();
+    for (let i = 0; i < 6; i += 1) h.send("\x1b[D");
+    setColumns(h, 100);
+    h.tui.render(100);
+    expect(h.split.getSidebarWidth()).toBe(36);
+    h.send("\r");
+    expect(h.onResizeCommit).toHaveBeenCalledExactlyOnceWith(50);
+  });
+
+  it("does not fire when a terminal shrink cancels the resize", () => {
+    const h = commitHarness();
+    h.split.beginResize();
+    h.send("\x1b[D");
+    setColumns(h, 91);
+    h.tui.render(91);
+    expect(h.split.isResizing()).toBe(false);
+    expect(h.onResizeCommit).not.toHaveBeenCalled();
   });
 });

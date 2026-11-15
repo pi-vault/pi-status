@@ -65,6 +65,8 @@ function config(): PiStatusConfig {
   return {
     statusbarEnabled: true,
     sidebarEnabled: true,
+    sidebarMode: "manual",
+    sidebarWidth: 44,
     zones: {
       topLeft: ["model-with-reasoning"],
       topRight: [],
@@ -171,13 +173,14 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\t");
-    // Settings rows: Statusbar (0), Sidebar (1), Colours (2), Notifications (3), Save (4).
+    // Settings rows: Statusbar (0), Sidebar (1), Sidebar mode (2), Colours (3), Notifications (4), Save (5).
     component.handleInput("\x1b[B"); // → Sidebar (row 1)
     component.handleInput("\r"); // toggle Sidebar off
-    component.handleInput("\x1b[B"); // → Colours (row 2)
-    component.handleInput("\x1b[B"); // → Notifications (row 3)
+    component.handleInput("\x1b[B"); // → Sidebar mode (row 2)
+    component.handleInput("\x1b[B"); // → Colours (row 3)
+    component.handleInput("\x1b[B"); // → Notifications (row 4)
     component.handleInput("\r"); // toggle notifications
-    component.handleInput("\x1b[B"); // → Save (row 4)
+    component.handleInput("\x1b[B"); // → Save (row 5)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
@@ -233,12 +236,13 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\t");
-    // Settings rows: Statusbar (0), Sidebar (1), Colours (2), Notifications (3), Save (4).
+    // Settings rows: Statusbar (0), Sidebar (1), Sidebar mode (2), Colours (3), Notifications (4), Save (5).
     component.handleInput("\x1b[B"); // → Sidebar (row 1)
-    component.handleInput("\x1b[B"); // → Colours (row 2)
-    component.handleInput("\x1b[B"); // → Notifications (row 3)
+    component.handleInput("\x1b[B"); // → Sidebar mode (row 2)
+    component.handleInput("\x1b[B"); // → Colours (row 3)
+    component.handleInput("\x1b[B"); // → Notifications (row 4)
     component.handleInput("\r"); // toggle notifications
-    component.handleInput("\x1b[B"); // → Save (row 4)
+    component.handleInput("\x1b[B"); // → Save (row 5)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
