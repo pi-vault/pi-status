@@ -5,6 +5,7 @@ import { renderSidebarLines, type SidebarSnapshot } from "./sidebar-render.ts";
 import { createStatusLineTheme } from "./theme.ts";
 import type {
   ColorSettings,
+  SidebarMode,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
 } from "../shared/types.ts";
@@ -21,6 +22,9 @@ export interface SidebarControllerOptions {
   getColors(): ColorSettings;
   shouldAnimate?(): boolean;
   animationIntervalMs?: number;
+  sidebarMode?: SidebarMode;
+  sidebarWidth?: number;
+  onResizeCommit?(width: number): void;
   onWarning?(message: string): void;
   onError?(error: unknown): void;
 }
@@ -28,6 +32,7 @@ export interface SidebarControllerOptions {
 export interface SidebarController {
   show(): void;
   setShown(shown: boolean): void;
+  setMode(mode: SidebarMode): void;
   isShown(): boolean;
   isSupported(): boolean;
   isEffectivelyVisible(): boolean;
@@ -44,6 +49,9 @@ const supportsSidebar = (tui: TUI | undefined): boolean =>
 
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
   const split: SplitPaneController = createSplitPaneController({
+    ...(options.sidebarMode ? { mode: options.sidebarMode } : {}),
+    ...(options.sidebarWidth !== undefined ? { defaultSidebarWidth: options.sidebarWidth } : {}),
+    ...(options.onResizeCommit ? { onResizeCommit: options.onResizeCommit } : {}),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     ...(options.onError ? { onError: options.onError } : {}),
     subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
@@ -170,6 +178,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
   return {
     show,
     setShown,
+    setMode: (mode) => safely(() => split.setMode(mode)),
     isShown: () => shown,
     isSupported: () => supportsSidebar(capturedTui),
     isEffectivelyVisible: () => {

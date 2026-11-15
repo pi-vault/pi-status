@@ -410,6 +410,61 @@ describe("sidebar controller", () => {
     expect(ctx.ui.onTerminalInput).toHaveBeenCalled();
   });
 
+  it("starts at the configured sidebarWidth", async () => {
+    const { host, tui } = makeFakeHost(200);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+      getColors: defaultColors,
+      sidebarWidth: 50,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    expect(controller.getEffectiveWidth()).toBe(50);
+  });
+
+  it("applies sidebarMode and setMode to the split pane", async () => {
+    const { host, tui } = makeFakeHost(123);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+      getColors: defaultColors,
+      sidebarMode: "auto",
+      sidebarWidth: 44,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    renderHost(tui, 123);
+    expect(controller.isEffectivelyVisible()).toBe(false);
+    controller.setMode("manual");
+    renderHost(tui, 123);
+    expect(controller.isEffectivelyVisible()).toBe(true);
+  });
+
+  it("forwards resize commits", async () => {
+    const { host, tui } = makeFakeHost(120);
+    const ctx = makeCtx(host, tui);
+    const onResizeCommit = vi.fn();
+    const controller = createSidebarController({
+      ctx,
+      getView: () => sidebarView(),
+      getColors: defaultColors,
+      onResizeCommit,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    expect(controller.beginResize()).toBe(true);
+    const handler = vi.mocked(ctx.ui.onTerminalInput).mock.calls[0]?.[0] as (
+      data: string,
+    ) => unknown;
+    handler("\x1b[D");
+    handler("\r");
+    expect(onResizeCommit).toHaveBeenCalledExactlyOnceWith(45);
+  });
+
   it("falls back to a 'Sidebar unavailable' dock when the view provider throws", async () => {
     const { host, tui } = makeFakeHost();
     const getView = vi.fn(() => {
