@@ -19,7 +19,7 @@
 - `engines.node` stays `">=24.15.0"`.
 - Never run any Git command in a project Pi has not trusted.
 - Never retain or display changed-file paths. `statusline.json` stays global. No new dashboard tabs.
-- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"`, `toggleShortcut` defaults to `""`.
+- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"`, `sidebarWidth` defaults to `44`.
 - Existing `pi-status:sidebar-panels` contributors keep working; the protocol version is unchanged.
 - Pi's `render` and fullscreen layout root are restored after `session_shutdown`, `/reload`, or a render error.
 - Module layout: `src/core`, `src/tui`, `src/shared`; test layout: `tests/core`, `tests/tui`, `tests/index-*.test.ts`. Match the existing 2-space Biome style.
@@ -182,7 +182,7 @@ Do not touch `tui.render`. Then:
 - pass `keyboardOnlyResize: split.isFullscreen()` into `renderSidebarLines`;
 - add `syncLayout: () => split.syncLayout()`.
 
-`sidebar-render.ts`: the banner text is `"RESIZE · ←/→ Enter/Esc"` when `keyboardOnlyResize`, else unchanged. `index.ts`: call `activeSidebarController?.syncLayout()` after a successful `/statusline` save. `show`/toggle and `session_start` already reach `split.show()`/`attach`.
+`sidebar-render.ts`: the banner text is `"RESIZE · ←/→ Enter/Esc"` when `keyboardOnlyResize`, else unchanged. `index.ts`: call `activeSidebarController?.syncLayout()` after a successful `/statusline` save. Sidebar show and `session_start` already reach `split.show()`/`attach`.
 
 - [ ] **Step 4: Run the tests and full check**
 

@@ -1,4 +1,4 @@
-# Atelier Parity Phase 4 — Auto sidebar, saved width, toggle key (release 0.9.0) Implementation Plan
+# Atelier Parity Phase 4 — Auto sidebar and saved width (release 0.9.0) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -6,16 +6,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-14-atelier-parity-design.md` (section "Phase 4")
 
+**Scope change (2026-11-14):** the `toggleShortcut` key was cut. `/statusline` → Settings → Sidebar already shows and hides the sidebar and remembers the choice. A toggle key can come back as its own change if users ask for it.
+
 **Reference implementation (pi-atelier):**
 
 - `src/split-pane.ts`: `AUTO_MAIN_WIDTH`/`AUTO_REOPEN_MARGIN` (~90), `resolveLayout` hysteresis (~432), commit only on change in `stopResize` (~519), `setMode`/`show` reset (~600–625), auto-mode refusal in `beginResize` (~635).
-- `src/shortcuts.ts`: `keyIdentity` (modifier-order-insensitive key compare).
 - `extensions/index.ts`: `saveSidebarWidth` (~360) writes a _patch_ of one key and ignores stale sessions.
-
-**Pi 1.5.2 facts this plan relies on** (`packages/coding-agent/src/core/extensions/`):
-
-- `loader.ts:329` `registerShortcut` only throws when the extension instance is stale. It does not validate the key.
-- `runner.ts:96-117,680-720` `getShortcuts`: an extension key that matches a _reserved_ built-in (`app.thinking.toggle` = `ctrl+t`, `app.interrupt`, `app.clear`, `app.exit`, model and tool keys, …) is skipped, and Pi itself reports a diagnostic. Other built-ins (for example editor `ctrl+b`) are overridden by the extension, also with a Pi diagnostic. pi-status does not duplicate those warnings.
 
 **Tech Stack:** TypeScript 7, pnpm, Biome, vitest 5, `@earendil-works/pi-coding-agent` / `@earendil-works/pi-tui` 1.5.2, Node ≥ 24.15.0.
 
@@ -27,7 +23,8 @@
 - `peerDependencies` stay `"*"` for both Pi packages. `@pi-vault/pi-usage` stays a regular `dependency`. `engines.node` stays `">=24.15.0"`.
 - Never run any Git command in a project Pi has not trusted.
 - Never retain or display changed-file paths. `statusline.json` stays global. No new dashboard tabs.
-- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"`, `sidebarWidth` defaults to `44`, and `toggleShortcut` defaults to `""`.
+- Default behaviour is unchanged without opt-in: `sidebarMode` defaults to `"manual"` and `sidebarWidth` defaults to `44`.
+- No new keyboard shortcuts. `ctrl+shift+r` (resize) stays the only one.
 - Existing `pi-status:sidebar-panels` contributors keep working, and `SIDEBAR_PANEL_PROTOCOL_VERSION` stays `1`.
 - Pi's `render` is restored after `session_shutdown`, `/reload`, or a render error (existing split-pane behaviour; do not regress it).
 - Module layout: `src/core`, `src/tui`, `src/shared`; tests in `tests/core`, `tests/tui`, `tests/index-*.test.ts`. Use the existing 2-space Biome style.
@@ -43,19 +40,16 @@
 
 ---
 
-## Phase 4 — Auto sidebar, saved width, toggle key (release 0.9.0)
+## Phase 4 — Auto sidebar and saved width (release 0.9.0)
 
-**Goal:** the sidebar can collapse and reopen with terminal width (opt-in), remembers its width across sessions, and can be toggled from a configurable key.
+**Goal:** the sidebar can collapse and reopen with terminal width (opt-in), and remembers its width across sessions.
 
 **Architecture:**
 
-- Three config keys are normalized in `src/core/config.ts`.
+- Two config keys are normalized in `src/core/config.ts`.
 - The split pane gains a mode and a hysteresis flag, updated only at render time, plus an `onResizeCommit` callback. It fires on a confirmed resize (Enter or mouse release after a drag) that changed the width.
 - The sidebar controller forwards mode, starting width and commit.
-- `src/index.ts`:
-  - registers the toggle key once at load;
-  - keeps a session-scoped visibility override;
-  - persists the width as a one-key patch of the current file.
+- `src/index.ts` applies the mode on every surface update and persists the width as a one-key patch of the current file.
 - The Settings tab gains one row, and the dashboard dirty check learns `sidebarMode`.
 
 ### Phase 4 Review Focus
@@ -67,8 +61,7 @@
   - A mouse release without a drag persists nothing (Task 4.2).
 - Persisting the width keeps keys hand-edited into `statusline.json` during the session (Task 4.4).
 - The dashboard Save is enabled after only flipping Sidebar mode (`configsEqual`, Task 4.4).
-- A toggle hide survives `session_tree` and `/statusline` saves that do not change `sidebarEnabled`. A toggle _show_ while `sidebarEnabled` is false also starts Workspace Pulse when the layout needs it (Task 4.4).
-- `toggleShortcut: "shift+ctrl+r"` is caught as the resize key (modifier order does not matter) (Task 4.4).
+- With Settings → Sidebar off, auto mode never shows the sidebar, however wide the terminal (Task 4.2).
 
 ### Task 4.1: Config keys
 
@@ -86,18 +79,17 @@
 ```ts
 // src/shared/types.ts
 export type SidebarMode = "manual" | "auto";
-// PiStatusConfig gains: sidebarMode: SidebarMode; sidebarWidth: number; toggleShortcut: string;
+// PiStatusConfig gains: sidebarMode: SidebarMode; sidebarWidth: number;
 ```
 
-Defaults are `"manual"`, `DEFAULT_SIDEBAR_WIDTH` (44) and `""`. `config.ts` imports `DEFAULT_SIDEBAR_WIDTH`, `MIN_SIDEBAR_WIDTH` and `MAX_SIDEBAR_WIDTH` from `src/tui/split-pane.ts`. `src/core` already imports from `src/tui` (`resolve-footer.ts`), so this follows existing layering.
+Defaults are `"manual"` and `DEFAULT_SIDEBAR_WIDTH` (44). `config.ts` imports `DEFAULT_SIDEBAR_WIDTH`, `MIN_SIDEBAR_WIDTH` and `MAX_SIDEBAR_WIDTH` from `src/tui/split-pane.ts`. `src/core` already imports from `src/tui` (`resolve-footer.ts`), so this follows existing layering.
 
 - [ ] **Step 1: Write the failing tests** (through a JSON file or a store, like the existing normalization tests)
 
-- `it("defaults sidebarMode, sidebarWidth and toggleShortcut")`: no file → `"manual"`, `44`, `""`. Also an existing file that lacks the keys → same.
+- `it("defaults sidebarMode and sidebarWidth")`: no file → `"manual"`, `44`. Also an existing file that lacks the keys → same.
 - `it.each([["auto","auto"],["manual","manual"],["AUTO","manual"],[1,"manual"],[null,"manual"]])("normalizes sidebarMode %j")`.
 - `it.each([[50,50],[28,28],[72,72],[10,28],[500,72],[50.5,44],["50",44],[true,44],[null,44]])("normalizes sidebarWidth %j")`. JSON cannot carry `NaN`, so it is not a case.
-- `it.each([[" Ctrl+Shift+B ","ctrl+shift+b"],["",""],["   ",""],[5,""],[null,""]])("normalizes toggleShortcut %j")`.
-- `it("persists the three keys through saveConfig")`: save `{ ...loaded, sidebarMode: "auto", sidebarWidth: 50, toggleShortcut: "ctrl+shift+b" }`, then reload → equal.
+- `it("persists both keys through saveConfig")`: save `{ ...loaded, sidebarMode: "auto", sidebarWidth: 50 }`, then reload → equal.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -109,11 +101,10 @@ Normalization:
 
 - `sidebarMode`: `"auto"` only for the exact string, otherwise `"manual"`.
 - `sidebarWidth`: when `Number.isInteger(v)`, clamp to 28..72; anything else → 44. _(Builder's call, kept: clamp out-of-range integers, default everything else.)_
-- `toggleShortcut`: when it is a string, `trim().toLowerCase()`; otherwise `""`.
 
-Add the three keys to `DEFAULT_CONFIG`, `cloneDefaultConfig`, `normalizeConfig` and the `next` object in `saveConfig`. `saveConfig` passes the values through as given; callers hold normalized config.
+Add both keys to `DEFAULT_CONFIG`, `cloneDefaultConfig`, `normalizeConfig` and the `next` object in `saveConfig`. `saveConfig` passes the values through as given; callers hold normalized config.
 
-Add the three default values to each fixture listed above. Update any full-object `toEqual` expectation on `loadConfig`/`saveConfig` output in `config.test.ts` that now misses the keys.
+Add the two default values to each fixture listed above. Update any full-object `toEqual` expectation on `loadConfig`/`saveConfig` output in `config.test.ts` that now misses the keys.
 
 - [ ] **Step 4: Run tests and full check**
 
@@ -123,7 +114,7 @@ Run: `pnpm test tests/core/config.test.ts && pnpm check`. Expected: PASS. `pnpm 
 
 ```bash
 git add src/shared/types.ts src/core/config.ts tests/
-git commit -m "feat: add sidebarMode, sidebarWidth and toggleShortcut config"
+git commit -m "feat: add sidebarMode and sidebarWidth config"
 ```
 
 ### Task 4.2: Split-pane auto mode and resize commit
@@ -234,16 +225,14 @@ git add src/tui/sidebar.ts tests/tui/sidebar.test.ts
 git commit -m "feat: pass sidebar mode and width through the sidebar controller"
 ```
 
-### Task 4.4: Extension wiring, Settings row, toggle key
+### Task 4.4: Extension wiring and Settings row
 
 **Files:**
 
 - Modify: `src/index.ts`:
-  - `registerShortcut("ctrl+shift+r")` (~148)
-  - `saveAndApplyConfig` commit (~176)
-  - `syncWorkspacePulse` (~316)
+  - `registerShortcut("ctrl+shift+r")` handler (~148)
   - `applySurfaceVisibility` (~345)
-  - `session_start` (~488, controller creation ~524)
+  - controller creation in `session_start` (~524)
 - Modify: `src/tui/dashboard-state.ts`:
   - row union (~83)
   - `configsEqual` (~227)
@@ -258,12 +247,9 @@ git commit -m "feat: pass sidebar mode and width through the sidebar controller"
 **Interfaces:**
 
 - Consumes: Tasks 4.1–4.3.
-- Produces (closure state in `createExtension`):
-  - `sidebarVisibilityOverride: boolean | undefined`. It resets at `session_start`, and on a `/statusline` save whose `sidebarEnabled` differs from the previous config. _(Builder's call, kept: the toggle is a session override of `sidebarEnabled`.)_
-  - `toggleShortcutWarning: string | undefined` and `toggleShortcutWarned = false`. The warning is notified once, at the first TUI `session_start` of this extension instance. `/reload` creates a new instance, so a bad key warns again after reload, which is intended.
-  - `persistSidebarWidth(ctx, width): void`.
+- Produces:
+  - `persistSidebarWidth(ctx, width): void` (closure in `createExtension`).
   - Settings row `{ type: "sidebar_mode" }`.
-  - Exported pure helper `sameKeyId(a: string, b: string): boolean` in `src/index.ts`, or a small `src/core/shortcuts.ts` if the builder prefers. It is modifier-order-insensitive, ported from atelier's `keyIdentity`.
 
 - [ ] **Step 1: Write the failing extension tests** (`tests/index-sidebar-mode.test.ts`)
 
@@ -274,24 +260,18 @@ Mock `../src/tui/sidebar.ts` with `vi.doMock` and `vi.resetModules()` (the patte
 - `setShown`, `setMode`, `beginResize`, `requestRender`, `show`, `dispose`;
 - `isShown`, `isSupported` and `isEffectivelyVisible`, backed by mutable flags.
 
-To capture shortcut handlers, wrap `pi.registerShortcut` in a `vi.fn` that stores `{ key, handler }`. The helper's version drops the handler.
+To capture the `ctrl+shift+r` handler, wrap `pi.registerShortcut` in a `vi.fn` that stores `{ key, handler }`. The helper's version drops the handler.
 
 - `it("shows an info notice and does not begin a resize in auto mode")`: config `sidebarMode: "auto"`. Invoke the `ctrl+shift+r` handler with the session ctx → `notify(expect.stringContaining("auto"), "info")`, and `beginResize` is not called.
 - `it("passes sidebarMode and sidebarWidth to the controller")`.
-- `it("persists sidebarWidth as a patch when a resize is committed")`: file has `sidebarWidth: 44`. _After_ `session_start`, hand-edit the file to add `"toggleShortcut": "ctrl+shift+b"`, then call the captured `onResizeCommit(50)`. Expect:
-  - the file has `sidebarWidth: 50` and still has `toggleShortcut: "ctrl+shift+b"`;
+- `it("applies a saved sidebarMode change without reload")`: drive a `/statusline` save that flips Sidebar mode (use an existing `index-save.test.ts` pattern), then expect `setMode("auto")`.
+- `it("persists sidebarWidth as a patch when a resize is committed")`: file has `sidebarWidth: 44`. _After_ `session_start`, hand-edit the file to set `"completionNotifications": true`, then call the captured `onResizeCommit(50)`. Expect:
+  - the file has `sidebarWidth: 50` and still has `completionNotifications: true`;
   - `runtimeState` has width 50, so a second `onResizeCommit(50)` does not write. Check with mtime or a spy on `saveConfig` via `vi.doMock`.
 - `it("does not write the file when the committed width equals the saved width")`.
 - `it("reports a warning when persisting the width fails")`: replace the file with `not json` after `session_start` → `notify(expect.stringContaining("sidebar width"), "warning")`.
 - `it("ignores a resize commit from a stale session")`: run `session_start` again with a new session manager, then call the _first_ controller's `onResizeCommit` → no write.
-- `it("registers the toggle shortcut from config once at load")`: `toggleShortcut: "ctrl+shift+b"` → shortcuts registered are exactly `["ctrl+shift+r", "ctrl+shift+b"]`.
-- `it("ignores an empty toggleShortcut silently")`: only `ctrl+shift+r`, no warning at `session_start`.
-- `it.each(["ctrl+shift+r", "shift+ctrl+r"])("rejects %s as toggleShortcut with one warning at the first session_start")`: not registered. Warn once, and do not warn again on a second `session_start`.
-- `it("warns once when registering the toggle shortcut throws")`: `registerShortcut` throws for that key only. The extension still loads, and `ctrl+shift+r` is still registered.
-- `it("toggle is a no-op with an info notice when the sidebar cannot display")`: (a) rpc ctx; (b) TUI ctx whose controller reports `isSupported() === false`. In both, `setShown` is not called by the handler.
-- `it("toggle flips visibility via setShown and survives session_tree and unrelated /statusline saves")`. Drive the save through `getRegisteredCommand(...,"statusline")` and the real dashboard, or call the commit path directly. Choose whichever existing `index-save.test.ts` pattern is cheaper.
-- `it("a /statusline save that changes sidebarEnabled clears the toggle override")`.
-- `it("toggle show starts Workspace Pulse when sidebarEnabled is false but the layout needs it")`. Alternatively, assert this at the `syncWorkspacePulse` level, using the trusted-project setup in `tests/index-workspace-pulse.test.ts`.
+- `it("registers no shortcut besides ctrl+shift+r")`.
 
 - [ ] **Step 2: Write the failing dashboard tests**
 
@@ -310,53 +290,17 @@ Run: `pnpm test tests/index-sidebar-mode.test.ts tests/tui/dashboard-state.test.
 
 **`ctrl+shift+r` handler:** after the session guards and before the visibility check, when `runtimeState.snapshot().config.sidebarMode === "auto"`, notify `"Sidebar resize is off in auto mode. Set Sidebar mode to Manual in /statusline Settings."` as `"info"` and return.
 
-**Toggle registration at load,** from `runtimeState.snapshot().config.toggleShortcut`:
-
-- `""` → skip.
-- `sameKeyId(key, "ctrl+shift+r")` → `toggleShortcutWarning = 'toggleShortcut "<key>" is reserved for sidebar resize and was ignored'`.
-- Otherwise:
-
-  ```ts
-  try {
-    pi.registerShortcut(key as KeyId, {
-      description: "Show or hide the pi-status sidebar",
-      handler: toggleSidebar,
-    });
-  } catch (e) {
-    toggleShortcutWarning = `Could not register toggleShortcut "${key}": ${message}`;
-  }
-  ```
-
-  Import `KeyId` as a type from `@earendil-works/pi-tui`. Pi reports keys that collide with its own bindings itself (see "Pi 1.5.2 facts").
-
-**`toggleSidebar(ctx)`:**
-
-1. Apply the same session guards as the resize handler.
-2. When `ctx.mode !== "tui"`, or there is no controller, or `!controller.isSupported()`: notify `"pi-status sidebar cannot be shown here"` as `"info"` and return.
-3. Otherwise:
-   - `sidebarVisibilityOverride = !controller.isShown()`;
-   - `closeActiveDashboard()`;
-   - `controller.setShown(sidebarVisibilityOverride)`;
-   - `syncWorkspacePulse(config)`;
-   - `controller.requestRender()`.
-
-**`syncWorkspacePulse`:** change `const sidebarDemand = config.sidebarEnabled && sidebarWorkspaceDemand()` to `const sidebarDemand = sidebarWorkspaceDemand()`. `sidebarWorkspaceDemand` already requires `controller.isShown()`, and visibility is now `override ?? sidebarEnabled`. Without an override nothing changes, because a disabled sidebar is never shown.
-
 **Controller creation:** the `createSidebarController` call gets `sidebarMode: config.sidebarMode`, `sidebarWidth: config.sidebarWidth`, and `onResizeCommit: (width) => persistSidebarWidth(ctx, width)`.
 
 **`persistSidebarWidth(ctx, width)`:**
 
 1. Return if `ctx.sessionManager !== activeTuiSessionManager` (stale session).
 2. Return if `width === runtimeState.snapshot().config.sidebarWidth`.
-3. Write a one-key patch of the _current file_: `saveConfig({ ...loadConfig(), sidebarWidth: width })`. This keeps known keys hand-edited since load, such as a new `toggleShortcut`. Unknown keys are dropped, as every `saveConfig` already does.
+3. Write a one-key patch of the _current file_: `saveConfig({ ...loadConfig(), sidebarWidth: width })`. This keeps known keys hand-edited since load. Unknown keys are dropped, as every `saveConfig` already does.
 4. Then `runtimeState.update({ type: "config_reload", config: { ...runtimeState.snapshot().config, sidebarWidth: width } })`. Only the width changes in memory; other file edits wait for `/reload`, as today.
 5. On a throw, notify `Could not save sidebar width: <message>` as `"warning"`. `loadConfig` returns defaults for a malformed file, and `saveConfig` then refuses to overwrite it, so the warning path covers that case.
 
-**`saveAndApplyConfig` commit:** before `applySurfaceVisibility`, `if (current.config.sidebarEnabled !== committed.sidebarEnabled) sidebarVisibilityOverride = undefined`.
-
-**`applySurfaceVisibility`:** `activeSidebarController?.setMode(config.sidebarMode)`, then `activeSidebarController?.setShown(sidebarVisibilityOverride ?? config.sidebarEnabled)`. `applySurfaceVisibility` runs on every `session_tree` and save. That is safe because `split.setMode` returns early for an unchanged mode (Task 4.2), so hysteresis and an active resize are untouched.
-
-**`session_start`:** set `sidebarVisibilityOverride = undefined` before `applySurfaceVisibility`. In TUI mode, if `toggleShortcutWarning && !toggleShortcutWarned`, notify it as `"warning"` and set the flag.
+**`applySurfaceVisibility`:** call `activeSidebarController?.setMode(config.sidebarMode)` before `setShown(config.sidebarEnabled)`. It runs on every `session_tree` and save; that is safe because `split.setMode` returns early for an unchanged mode (Task 4.2), so hysteresis and an active resize are untouched.
 
 **Dashboard:**
 
@@ -375,7 +319,7 @@ Run: `pnpm test tests/index-sidebar-mode.test.ts tests/tui/dashboard-state.test.
 
 ```bash
 git add src/index.ts src/tui/dashboard-state.ts src/tui/dashboard-render.ts tests/
-git commit -m "feat: wire auto sidebar mode, saved width and toggle shortcut"
+git commit -m "feat: wire auto sidebar mode and saved width"
 ```
 
 ### Task 4.5: Docs, smoke test, release 0.9.0
@@ -386,13 +330,11 @@ git commit -m "feat: wire auto sidebar mode, saved width and toggle shortcut"
 
 README:
 
-- A config table for `sidebarMode`/`sidebarWidth`/`toggleShortcut` with types and defaults. Note that `sidebarWidth` and `toggleShortcut` are file-only.
+- A config table for `sidebarMode`/`sidebarWidth` with types and defaults. Note that `sidebarWidth` is file-only and is also set by a confirmed resize.
 - The auto thresholds: collapses below `80 + width`, reopens at `≥ 80 + width + 8`. Manual mode keeps the below-92-columns hide.
 - Resize is disabled in auto mode.
 - A confirmed resize that changes the width becomes the starting width for new sessions. Escape and terminal resizes never change it.
-- Toggle changes need `/reload`. The toggle hide/show lasts for the session.
-- `ctrl+shift+r` (in any modifier order) cannot be the toggle key.
-- Pi skips keys reserved by its own bindings (for example `ctrl+t`, thinking toggle) and reports a diagnostic. Some keys override editor actions (for example `ctrl+b`). Suggest `ctrl+shift+b`.
+- Settings → Sidebar turns the sidebar off in both modes; auto mode never overrides it.
 - The Settings "Sidebar mode" row.
 
 CHANGELOG `## 0.9.0 - <date>`, `### Added`.
@@ -407,12 +349,7 @@ CHANGELOG `## 0.9.0 - <date>`, `### Added`.
    - narrow below 130: the sidebar collapses;
    - widen to 137: still collapsed;
    - widen to 138 or more: it reopens.
-4. Set `"toggleShortcut": "ctrl+shift+b"` in the file and `/reload`. Then:
-   - Ctrl+Shift+B hides the sidebar;
-   - widening keeps it hidden;
-   - `/statusline` save without touching Sidebar keeps it hidden;
-   - Ctrl+Shift+B shows it again.
-5. Set `"toggleShortcut": "shift+ctrl+r"` and `/reload`: one warning, and resize still works.
+4. Settings → Sidebar off, then Save: the sidebar hides and stays hidden when the terminal widens. Turn it back on: it reappears under the auto rules.
 
 - [ ] **Step 3: Version, release check, commit, PR, tag**
 
@@ -429,18 +366,14 @@ After merge, tag `v0.9.0`.
 
 ## Revision notes (vs. the previous Phase 4 plan)
 
-1. **Wrong branch name.** The plan named `20261114-auto-sidebar`. The repo already has `20261114-pi-atelier-parity-phase-4-auto-sidebar`, which matches Phases 1–3.
-2. **Clamped width could be saved.** `beginResize` sets `sidebarWidth` to the _effective_ width, which the terminal may clamp. The old plan committed on every Enter, so an unchanged Enter in a narrow terminal saved the clamped width. That breaks "terminal resizes never change the saved width". The new plan commits only when the width changed from resize start, like atelier.
-3. **Hand edits were overwritten.** `saveConfig({ ...config, sidebarWidth })` rewrote the file from memory. A key added by hand mid-session (for example `toggleShortcut`, just before `/reload`) would be lost on the next resize. The new plan patches one key over a fresh `loadConfig()`, like atelier's `savePatch`.
-4. **Save could not be enabled for a mode change.** `configsEqual` (`dashboard-state.ts:227`) did not compare `sidebarMode`, so flipping only Sidebar mode left the draft "clean" and Save disabled.
-5. **Toggle show did not start Workspace Pulse.** `syncWorkspacePulse` gated sidebar demand on `config.sidebarEnabled`. A toggle show over `sidebarEnabled: false` would render an empty Workspace panel.
+1. **Toggle key cut.** `toggleShortcut`, the session-only visibility override, its warnings and the Workspace Pulse change it needed are gone. Settings → Sidebar already shows and hides the sidebar and persists the choice. The spec's Phase 4 section was updated to match.
+2. **Wrong branch name.** The plan named `20261114-auto-sidebar`. The repo already has `20261114-pi-atelier-parity-phase-4-auto-sidebar`, which matches Phases 1–3.
+3. **Clamped width could be saved.** `beginResize` sets `sidebarWidth` to the _effective_ width, which the terminal may clamp. The old plan committed on every Enter, so an unchanged Enter in a narrow terminal saved the clamped width. That breaks "terminal resizes never change the saved width". The new plan commits only when the width changed from resize start, like atelier.
+4. **Hand edits were overwritten.** `saveConfig({ ...config, sidebarWidth })` rewrote the file from memory, losing keys hand-edited mid-session. The new plan patches one key over a fresh `loadConfig()`, like atelier's `savePatch`.
+5. **Save could not be enabled for a mode change.** `configsEqual` (`dashboard-state.ts:227`) did not compare `sidebarMode`, so flipping only Sidebar mode left the draft "clean" and Save disabled.
 6. **Tests the plan would break, now listed.**
    - Inserting the Settings row shifts hard-coded `↓` navigation in `tests/index-save.test.ts` and `tests/tui/dashboard.test.ts`.
    - New required config keys break 11 test fixture files at typecheck. The old plan pointed at `tests/helpers.ts` `withDefaults`, which builds `FooterRenderInput`, not config.
-7. **Smoke key would not work.** `ctrl+t` is Pi's reserved `app.thinking.toggle`, so Pi skips it (`runner.ts:96-117`). The smoke run and examples now use `ctrl+shift+b`.
-8. **Shortcut comparison was order-sensitive.** `shift+ctrl+r` and `ctrl+shift+r` match the same key in pi-tui. A plain string compare missed that. Ported atelier's `keyIdentity`.
-9. **Untestable cases removed.** `normalizeConfig` is not exported and JSON cannot carry `NaN`. Normalization is now tested through files, with `true` in place of `NaN`.
-10. **The split pane enforces auto-mode safety itself.** `beginResize` refuses in auto mode (as atelier does), and `setMode` cancels an active resize. `show()` resets hysteresis (as atelier does), so re-showing in a narrow terminal re-evaluates without the reopen margin.
-11. **Stale session commits are ignored.** A commit from a previous session's controller is dropped.
-12. **Registration-throw case is theoretical.** In Pi 1.5.2, `registerShortcut` throws only for a stale instance. The try/catch stays as cheap insurance, and its test uses a throwing fake.
-13. **Spec deviation, kept.** The spec says an empty `toggleShortcut` is "ignored with a warning". Empty is the default, so it is ignored silently. Only `ctrl+shift+r` warns.
+7. **Untestable cases removed.** `normalizeConfig` is not exported and JSON cannot carry `NaN`. Normalization is now tested through files, with `true` in place of `NaN`.
+8. **The split pane enforces auto-mode safety itself.** `beginResize` refuses in auto mode (as atelier does), and `setMode` cancels an active resize but is a no-op for an unchanged mode. `show()` resets hysteresis (as atelier does), so re-showing in a narrow terminal re-evaluates without the reopen margin.
+9. **Stale session commits are ignored.** A commit from a previous session's controller is dropped.
