@@ -259,9 +259,12 @@ If you are upgrading from `0.3.x`, note these compatibility changes:
 ```bash
 pnpm install
 pnpm check
-pnpm run pack:dry-run
+pnpm verify:pack
+pnpm verify:install
 pnpm run release:check
 ```
+
+`release:check` runs `check`, then verifies the packed file set and that the packed tarball installs with Pi's npm flags and loads in Pi's extension loader.
 
 ## Acknowledgements
 
