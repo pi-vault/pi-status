@@ -45,7 +45,7 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 
 `/statusline` stays available even when both the Statusbar and Sidebar are disabled — you can re-enable either surface from the Settings tab at any time.
 
-Pi 0.84.4 or newer is required.
+Pi 1.5.2 or newer is required.
 
 ## Available Segments
 
@@ -191,8 +191,6 @@ The Dashboard order is Pi, Atelier, Catppuccin Mocha, Catppuccin Latte, Dracula,
 
 The first switch to Custom copies the selected fixed palette; switching from Pi copies Atelier because Pi exposes live theme operations rather than stable hex values. Later preset switches preserve all 14 Custom roles. Custom is editable from the Settings tab: the row opens per-role hex inputs that validate case-insensitive `#rrggbb`, persist lowercase values, and require truecolour terminal support. `NO_COLOR` continues to disable styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
 
-`NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
-
 ## Surface Visibility Outcomes
 
 The two Settings-tab checkboxes are independent and take effect immediately after Save (and again at the next session start):
@@ -251,7 +249,7 @@ If you are upgrading from `0.3.x`, note these compatibility changes:
 - Configuration lives in the global extension-owned `<Pi agent directory>/extensions/statusline.json`. Pi `settings.json` values are ignored and not migrated automatically.
 - Per-tool sidebar rows replace the old global tool-name switch and default to disabled.
 - Several new opt-in segments are available: `workspace-pulse`, `turn-progress`, `response-performance`, `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, `access-type`.
-- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.84.3` and `@earendil-works/pi-tui@0.84.3`.
+- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@1.5.2` and `@earendil-works/pi-tui@1.5.2`.
 - The extension requires Node.js `>=24.15.0`.
 
 ## Development & Verification

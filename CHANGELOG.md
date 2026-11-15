@@ -2,6 +2,14 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.6.0 - 2026-11-14
+
+### Compatibility
+
+- Pi 1.5.2 or newer is now required. Updated the tested host baseline to `@earendil-works/pi-coding-agent@1.5.2` and `@earendil-works/pi-tui@1.5.2`. Pi 0.84.x users should stay on pi-status 0.5.x.
+- Updated tooling: `@biomejs/biome` `^2.6.7`, `vitest` `^5.1.0`, `@types/node` `^26.6.6`. Node.js 24.15.0+ still required.
+- Existing `statusline.json` files load and save unchanged.
+
 ## 0.5.1 - 2026-09-02
 
 ### Compatibility
