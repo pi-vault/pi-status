@@ -37,3 +37,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Verify package contents
+        run: pnpm verify:pack

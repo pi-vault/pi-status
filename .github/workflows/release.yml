@@ -31,11 +31,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Check
-        run: pnpm check
-
-      - name: Pack dry run
-        run: pnpm run pack:dry-run
+      - name: Release check
+        run: pnpm release:check
 
       - name: Verify tag matches package version
         run: |

@@ -2,6 +2,16 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.7.0 - 2026-11-14
+
+### Added
+
+- Release verification: `pnpm verify:pack` checks the packed file set against the tracked files listed in `package.json` `files`; `pnpm verify:install` installs the packed tarball with Pi's npm flags and loads it in Pi's extension loader. Both run in `pnpm release:check`, and the release workflow runs it before publishing.
+
+### Compatibility
+
+- Marked the `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui` peers optional. Pi installs are unchanged. A plain `npm install` of pi-status still installs Pi through `@pi-vault/pi-usage`'s required peers until pi-usage marks them optional.
+
 ## 0.6.1 - 2026-11-14
 
 ### Security
