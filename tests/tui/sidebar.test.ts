@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
@@ -275,7 +276,7 @@ describe("sidebar controller", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("isSupported() returns false when the host is a viewport TUI", async () => {
+  it("isSupported() returns false for a viewport TUI that is not in fullscreen mode", async () => {
     const { host, tui } = makeFakeHost();
     (tui as unknown as Record<symbol, boolean>)[Symbol.for("@earendil-works/pi-tui/viewport")] =
       true;
@@ -287,6 +288,74 @@ describe("sidebar controller", () => {
     controller.show();
     await Promise.resolve();
     expect(controller.isSupported()).toBe(false);
+  });
+
+  function fullscreenHost(columns = 160) {
+    const { host, tui } = makeFakeHost(columns);
+    const main = { render: (w: number) => [`main:${w}`], invalidate() {} };
+    const fs = tui as unknown as Record<string | symbol, unknown>;
+    fs[Symbol.for("@earendil-works/pi-tui/viewport")] = true;
+    fs.mode = "fullscreen";
+    fs.layoutRoot = main;
+    fs.setLayoutRoot = (c: unknown) => {
+      fs.layoutRoot = c;
+    };
+    const frame = () =>
+      (fs.layoutRoot as { render(w: number): string[] })
+        .render(columns)
+        .map((line) => stripTerminalSequences(line));
+    return { host, tui, main, fs, frame };
+  }
+
+  it("supports a fullscreen viewport TUI and wraps its layout root", async () => {
+    const { host, tui, main, fs, frame } = fullscreenHost();
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+      getColors: defaultColors,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    expect(controller.isSupported()).toBe(true);
+    expect(controller.isEffectivelyVisible()).toBe(true);
+    expect(fs.layoutRoot).not.toBe(main);
+    expect(frame()[0]).toContain("main:116");
+    controller.setShown(false);
+    expect(fs.layoutRoot).toBe(main);
+  });
+
+  it("renders 'Sidebar unavailable' inside the HStack when getView throws", async () => {
+    const { host, tui, frame } = fullscreenHost();
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => {
+        throw new Error("boom");
+      },
+      getColors: defaultColors,
+      onError: vi.fn(),
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    const lines = frame();
+    expect(lines[0]).toContain("main:116");
+    expect(lines[0]).toContain("Sidebar unavailable");
+  });
+
+  it("syncLayout re-wraps a replaced fullscreen root", async () => {
+    const { host, tui, fs, frame } = fullscreenHost();
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+      getColors: defaultColors,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    fs.layoutRoot = { render: (w: number) => [`other:${w}`], invalidate() {} };
+    controller.syncLayout();
+    expect(frame()[0]).toContain("other:116");
   });
 
   it("isEffectivelyVisible() reflects both shown state and current terminal width", async () => {
@@ -377,7 +446,7 @@ describe("sidebar controller", () => {
     expect(visible?.(120, 36)).toBe(false);
   });
 
-  it("does not install the trailing renderer on viewport TUIs", async () => {
+  it("does not install the trailing renderer on viewport TUIs in regular mode", async () => {
     const { host, tui } = makeFakeHost();
     (tui as unknown as Record<symbol, boolean>)[Symbol.for("@earendil-works/pi-tui/viewport")] =
       true;

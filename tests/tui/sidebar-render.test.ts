@@ -356,7 +356,7 @@ describe("buildSidebarSnapshot", () => {
   });
 });
 
-type RenderOptions = { colorEnabled?: boolean; resizing?: boolean };
+type RenderOptions = { colorEnabled?: boolean; resizing?: boolean; keyboardOnlyResize?: boolean };
 
 function render(
   input: SidebarRenderFixtureInput,
@@ -680,6 +680,17 @@ describe("renderSidebarLines panel composition", () => {
   it("shows the resize banner while resizing", () => {
     const text = render(makeInput(), 44, 36, { colorEnabled: false, resizing: true }).join("\n");
     expect(text).toContain("RESIZE");
+    expect(text).toContain("RESIZE · drag divider");
+  });
+
+  it("shows a keyboard-only resize banner", () => {
+    const text = render(makeInput(), 44, 36, {
+      colorEnabled: false,
+      resizing: true,
+      keyboardOnlyResize: true,
+    }).join("\n");
+    expect(text).toContain("RESIZE · ←/→ Enter/Esc");
+    expect(text).not.toContain("drag divider");
   });
 });
 

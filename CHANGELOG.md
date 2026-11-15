@@ -2,6 +2,18 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## 0.10.0 - 2026-11-15
+
+### Added
+
+- Fullscreen sidebar: in Pi's fullscreen mode the Sidebar renders beside the transcript with the same panels, Sidebar mode and saved width. Resize is keyboard-only in fullscreen.
+
+### Known limitations
+
+- A selection that starts outside the transcript (for example in the editor) can include Sidebar text in fullscreen.
+- Sidebar rows beside inline images are blank.
+- Pi blocks switching between fullscreen and regular mode while pi-status is loaded; restart Pi after changing the mode.
+
 ## 0.9.0 - 2026-11-14
 
 ### Added

@@ -188,6 +188,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             committed,
             current.config.statusbarEnabled !== committed.statusbarEnabled,
           );
+          activeSidebarController?.syncLayout();
         },
       });
       return;

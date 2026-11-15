@@ -457,12 +457,18 @@ function renderSidebarLinesInner(
   theme: StatusLineTheme,
   safeWidth: number,
   safeHeight: number,
-  options: { colorEnabled?: boolean; resizing?: boolean },
+  options: { colorEnabled?: boolean; resizing?: boolean; keyboardOnlyResize?: boolean },
 ): string[] {
   const palette = createPalette(theme as PaletteTheme, options.colorEnabled ?? true);
   const contentWidth = Math.max(0, safeWidth - 2);
   const banner = options.resizing
-    ? [palette.paint("warning", "RESIZE · drag divider"), ""]
+    ? [
+        palette.paint(
+          "warning",
+          options.keyboardOnlyResize ? "RESIZE · ←/→ Enter/Esc" : "RESIZE · drag divider",
+        ),
+        "",
+      ]
     : ([] as string[]);
   const panels = collectPanels(snapshot, catalog, layout);
   const catalogOrder = new Map(catalog.map((entry, index) => [entry.id, index]));
@@ -489,7 +495,7 @@ export function renderSidebarLines(
   theme: StatusLineTheme,
   width: number,
   height: number,
-  options: { colorEnabled?: boolean; resizing?: boolean } = {},
+  options: { colorEnabled?: boolean; resizing?: boolean; keyboardOnlyResize?: boolean } = {},
 ): string[] {
   const safeWidth = Math.max(0, Math.trunc(width));
   const safeHeight = Math.max(0, Math.trunc(height));
