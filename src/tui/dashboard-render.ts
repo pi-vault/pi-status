@@ -315,6 +315,8 @@ function logicalBody(
           "Sidebar",
           "Show the pi-status Sidebar",
         );
+      } else if (row.type === "sidebar_mode") {
+        pushSelectable("↔", "Sidebar mode", state.draft.sidebarMode === "auto" ? "Auto" : "Manual");
       } else if (row.type === "color_preset") {
         pushSelectable("↔", "Colours", COLOR_LABELS[state.draft.colors.preset]);
       } else if (row.type === "color_role") {
