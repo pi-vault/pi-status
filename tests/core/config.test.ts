@@ -1148,3 +1148,19 @@ describe("config — surface visibility", () => {
     expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(disabled);
   });
 });
+
+describe("config — 0.5.x compatibility", () => {
+  it("round-trips a 0.5.x statusline.json without changing it", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    const legacy = readFileSync(
+      join(import.meta.dirname, "../fixtures/statusline-0.5.1.json"),
+      "utf8",
+    );
+    store.seed(path, legacy);
+
+    saveConfig(loadConfig({ agentDir: "/agent", store }), { agentDir: "/agent", store });
+
+    expect(store.read(path)).toBe(legacy);
+  });
+});

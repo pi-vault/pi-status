@@ -1,4 +1,4 @@
-import { Input, visibleWidth } from "@earendil-works/pi-tui";
+import { Input, stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import { createStatusLineTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
@@ -48,10 +48,6 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
-}
-
-function stripAnsi(value: string): string {
-  return value.replace(new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, "g"), "");
 }
 
 const snapshotInput = {
@@ -235,7 +231,7 @@ describe("dashboard render", () => {
       state.activeTab = "settings";
       state.draft.colors.preset = preset;
       expect(
-        stripAnsi(renderDashboard(state, preview, noTheme, 120, 60).lines.join("\n")),
+        stripTerminalSequences(renderDashboard(state, preview, noTheme, 120, 60).lines.join("\n")),
       ).toContain(`Colours - ${label}`);
     },
   );
@@ -511,7 +507,7 @@ describe("dashboard render", () => {
       input,
     });
 
-    const output = stripAnsi(result.lines.join("\n"));
+    const output = stripTerminalSequences(result.lines.join("\n"));
     expect(output).toContain("Release 🚀");
     expect(output).toContain("Enter Submit");
     expect(result.lines.at(-1)).toContain("┗");
@@ -527,7 +523,7 @@ describe("dashboard render", () => {
       input,
     });
 
-    const output = stripAnsi(result.lines.join("\n"));
+    const output = stripTerminalSequences(result.lines.join("\n"));
     expect(output).toContain("Edit accent colour");
     expect(output).toContain("#b18cff");
     expect(output).toContain("Enter Submit");

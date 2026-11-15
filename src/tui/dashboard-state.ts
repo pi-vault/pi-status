@@ -519,7 +519,7 @@ function reconcileSidebarSelection(
   ) {
     index = rows.findIndex((row) => row.type === previous.type);
   }
-  state.navigation.sidebar.selectedIndex = index >= 0 ? index : 0;
+  state.navigation.sidebar.selectedIndex = Math.max(index, 0);
   return clampSelection(state);
 }
 
@@ -607,7 +607,7 @@ function reconcileStatusSelection(
           (row) => row.type === "status_visibility" && row.key === previous.key,
         )
       : -1;
-  activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
+  activeNavigation(state).selectedIndex = Math.max(index, 0);
   return clampSelection(state);
 }
 
@@ -683,7 +683,7 @@ export function reduceDashboardState(
       const panels = state.draftSidebarLayout.panels;
       if (panels.length === 0) return { state: clampSelection(state) };
       const currentIndex = panels.findIndex((panel) => panel.id === state.activeSidebarPanelId);
-      const startIndex = currentIndex >= 0 ? currentIndex : 0;
+      const startIndex = Math.max(currentIndex, 0);
       const nextIndex = (startIndex + action.delta + panels.length) % panels.length;
       state.activeSidebarPanelId = panels[nextIndex]?.id;
       return { state: clampSelection(state) };

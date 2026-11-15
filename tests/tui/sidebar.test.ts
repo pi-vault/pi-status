@@ -83,6 +83,7 @@ class FakeOverlayHandle implements OverlayHandle {
     this.focused = false;
   });
   isFocused = vi.fn(() => this.focused);
+  getBounds = vi.fn(() => undefined);
 }
 
 interface FakeHost {
