@@ -1,0 +1,129 @@
+{
+  "statusbarEnabled": true,
+  "sidebarEnabled": false,
+  "zones": {
+    "topLeft": [
+      "model-with-reasoning"
+    ],
+    "topRight": [],
+    "bottomLeft": [
+      "current-dir",
+      "workspace-pulse"
+    ],
+    "bottomRight": []
+  },
+  "extensionSegments": {
+    "hidden": [
+      "ext:alpha"
+    ]
+  },
+  "extensionStatusZone": "bottomLeft",
+  "completionNotifications": true,
+  "sidebarPanelLayout": [
+    {
+      "id": "tools",
+      "visible": true,
+      "segments": [
+        "builtin:active-tool-count"
+      ]
+    },
+    {
+      "id": "usage",
+      "visible": true,
+      "segments": [
+        "builtin:usage-5h",
+        "builtin:usage-weekly",
+        "builtin:total-tokens",
+        "builtin:cost",
+        "builtin:input",
+        "builtin:output",
+        "builtin:cache-read",
+        "builtin:cache-write",
+        "builtin:cache-hit"
+      ]
+    },
+    {
+      "id": "workspace",
+      "visible": true,
+      "segments": [
+        "builtin:project",
+        "builtin:directory",
+        "builtin:branch",
+        "builtin:changes",
+        "builtin:sync-state",
+        "builtin:session-identity",
+        "builtin:entry-count",
+        "builtin:persistence"
+      ]
+    },
+    {
+      "id": "context",
+      "visible": true,
+      "segments": [
+        "builtin:context-used",
+        "builtin:context-remaining",
+        "builtin:context-meter"
+      ]
+    },
+    {
+      "id": "todos",
+      "visible": true,
+      "segments": [
+        "builtin:todos-progress"
+      ]
+    },
+    {
+      "id": "statuses",
+      "visible": true,
+      "segments": []
+    },
+    {
+      "id": "alerts",
+      "visible": true,
+      "segments": []
+    },
+    {
+      "id": "activity",
+      "visible": false,
+      "segments": [
+        "builtin:run-state",
+        "builtin:run-timing",
+        "builtin:turn-progress",
+        "builtin:response-performance",
+        "builtin:tool-outcomes",
+        "builtin:recent-tools"
+      ]
+    },
+    {
+      "id": "agent",
+      "visible": true,
+      "segments": [
+        "builtin:model",
+        "builtin:thinking",
+        "builtin:provider",
+        "builtin:access"
+      ]
+    }
+  ],
+  "sidebarHiddenSegments": [],
+  "colors": {
+    "preset": "custom",
+    "custom": {
+      "accent": "#b18cff",
+      "primary": "#d4d4d4",
+      "muted": "#808080",
+      "dim": "#666666",
+      "ready": "#6ea8fe",
+      "working": "#ff9f43",
+      "input": "#6ea8fe",
+      "output": "#b18cff",
+      "cache": "#7dd3fc",
+      "cost": "#ff9f43",
+      "context": "#6ea8fe",
+      "menu": "#b18cff",
+      "warning": "#ff9f43",
+      "error": "#ff5d73"
+    },
+    "customInitialized": true
+  }
+}
