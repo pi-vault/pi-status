@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "pack:dry-run": "pnpm pack --dry-run",
+    "verify:pack": "node scripts/verify-pack.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "release:check": "pnpm check && pnpm run pack:dry-run"
   },
